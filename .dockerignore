@@ -1,0 +1,24 @@
+# Add Docker-specific ignores
+dist/
+node_modules/
+
+# Docker files (keep in repo)
+!Dockerfile
+!docker-compose*.yml
+!.dockerignore
+
+# Environment files (keep examples)
+.env.docker
+!.env.docker.example
+
+# Uploads directory content (but keep the directory)
+uploads/*
+!uploads/.gitkeep
+
+# Docker volumes
+postgres_data/
+qdrant_data/
+redis_data/
+
+# Development database files
+*.db-journal

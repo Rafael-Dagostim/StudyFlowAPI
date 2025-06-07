@@ -1,0 +1,99 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Professor {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  projects  Project[]
+  documents Document[]
+
+  @@map("professors")
+}
+
+model Project {
+  id                  String   @id @default(cuid())
+  name                String
+  subject             String
+  description         String
+  professorId         String
+  qdrantCollectionId  String?  // Will be set after creating collection in Qdrant
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  professor     Professor     @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  documents     Document[]
+  conversations Conversation[]
+
+  @@map("projects")
+}
+
+model Document {
+  id           String    @id @default(cuid())
+  filename     String    // Display name for the file
+  originalName String    // Original filename when uploaded
+  s3Key        String    @unique
+  s3Bucket     String
+  mimeType     String
+  size         Int
+  textContent  String?   // Extracted text content
+  projectId    String
+  uploadedById String    // Professor who uploaded the document
+  processedAt  DateTime? // Null until document is processed and embedded
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy Professor @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  projectId String
+  title     String?  // Optional title for the conversation
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String    @id @default(cuid())
+  conversationId String
+  role           Role
+  content        String
+  metadata       Json?     // Store additional metadata like tokens used, sources, etc.
+  createdAt      DateTime  @default(now())
+
+  // Relations
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+enum Role {
+  USER
+  ASSISTANT
+}
