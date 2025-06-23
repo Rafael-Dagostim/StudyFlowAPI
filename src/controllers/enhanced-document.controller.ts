@@ -1,19 +1,19 @@
-import { Response, NextFunction } from 'express';
-import { prisma } from '../utils/database';
-import { createError } from '../middleware/error.middleware';
-import { AuthenticatedRequest } from '../types';
-import { enhancedRAGService } from '../services/enhanced-rag.service';
-import { LangChainDocumentProcessor } from '../services/langchain-document.service';
-import { z } from 'zod';
+import { NextFunction, Response } from "express";
+import { z } from "zod";
+import { createError } from "../middleware/error.middleware";
+import { ragService } from "../services/rag.service";
+import { LangChainDocumentProcessor } from "../services/langchain-document.service";
+import { AuthenticatedRequest } from "../types";
+import { prisma } from "../utils/database";
 
 // Validation schemas
 const processDocumentSchema = z.object({
-  force: z.string().optional()
+  force: z.string().optional(),
 });
 
 const educationalQuerySchema = z.object({
   query: z.string().min(1).max(5000),
-  type: z.enum(['question', 'summary', 'quiz', 'explanation']).optional()
+  type: z.enum(["question", "summary", "quiz", "explanation"]).optional(),
 });
 
 export class EnhancedDocumentController {
@@ -27,30 +27,30 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId } = req.params;
       const files = req.files as Express.Multer.File[];
 
       if (!files || files.length === 0) {
-        throw createError('No files provided', 400);
+        throw createError("No files provided", 400);
       }
 
       // Verify project exists and belongs to user
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError("Project not found or access denied", 404);
       }
 
-      // Process files with enhanced RAG service
-      const result = await enhancedRAGService.batchProcessDocuments(
+      // Process files with consolidated RAG service
+      const result = await ragService.batchProcessDocuments(
         files,
         projectId,
         req.user.id
@@ -61,8 +61,8 @@ export class EnhancedDocumentController {
         data: {
           uploaded: result.successful,
           failed: result.failed,
-          results: result.results
-        }
+          results: result.results,
+        },
       });
     } catch (error) {
       next(error);
@@ -79,7 +79,7 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId } = req.params;
@@ -88,20 +88,22 @@ export class EnhancedDocumentController {
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError("Project not found or access denied", 404);
       }
 
-      // Get enhanced project status
-      const projectStatus = await enhancedRAGService.getProjectStatus(projectId);
+      // Get project status
+      const projectStatus = await ragService.getProjectStatus(
+        projectId
+      );
 
       res.status(200).json({
-        message: 'Documents retrieved successfully',
-        data: projectStatus
+        message: "Documents retrieved successfully",
+        data: projectStatus,
       });
     } catch (error) {
       next(error);
@@ -118,7 +120,7 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId, docId } = req.params;
@@ -129,8 +131,8 @@ export class EnhancedDocumentController {
           id: docId,
           projectId: projectId,
           project: {
-            professorId: req.user.id
-          }
+            professorId: req.user.id,
+          },
         },
         include: {
           project: {
@@ -138,20 +140,20 @@ export class EnhancedDocumentController {
               id: true,
               name: true,
               qdrantCollectionId: true,
-            }
+            },
           },
           uploadedBy: {
             select: {
               id: true,
               name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
       if (!document) {
-        throw createError('Document not found or access denied', 404);
+        throw createError("Document not found or access denied", 404);
       }
 
       // Add enhanced information
@@ -159,13 +161,17 @@ export class EnhancedDocumentController {
         ...document,
         hasText: !!document.textContent,
         isProcessed: !!document.processedAt,
-        supportedByLangChain: LangChainDocumentProcessor.isFileTypeSupported(document.originalName),
-        analysis: document.textContent ? LangChainDocumentProcessor.analyzeDocument(document.textContent) : null
+        supportedByLangChain: LangChainDocumentProcessor.isFileTypeSupported(
+          document.originalName
+        ),
+        analysis: document.textContent
+          ? LangChainDocumentProcessor.analyzeDocument(document.textContent)
+          : null,
       };
 
       res.status(200).json({
-        message: 'Document retrieved successfully',
-        data: enhancedDocument
+        message: "Document retrieved successfully",
+        data: enhancedDocument,
       });
     } catch (error) {
       next(error);
@@ -182,7 +188,7 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId, docId } = req.params;
@@ -194,36 +200,39 @@ export class EnhancedDocumentController {
           id: docId,
           projectId: projectId,
           project: {
-            professorId: req.user.id
-          }
-        }
+            professorId: req.user.id,
+          },
+        },
       });
 
       if (!document) {
-        throw createError('Document not found or access denied', 404);
+        throw createError("Document not found or access denied", 404);
       }
 
       // Check if document is already processed (unless forcing)
-      if (document.processedAt && force !== 'true') {
+      if (document.processedAt && force !== "true") {
         res.status(200).json({
-          message: 'Document already processed',
+          message: "Document already processed",
           data: {
             documentId: document.id,
             processedAt: document.processedAt,
-            message: 'Use force=true to reprocess'
-          }
+            message: "Use force=true to reprocess",
+          },
         });
         return;
       }
 
       // Process document
-      const result = force === 'true' 
-        ? await enhancedRAGService.reprocessDocument(docId)
-        : await enhancedRAGService.processDocument(docId);
+      const result =
+        force === "true"
+          ? await ragService.reprocessDocument(docId)
+          : await ragService.processDocument(docId);
 
       res.status(200).json({
-        message: result.success ? 'Document processed successfully' : 'Document processing failed',
-        data: result
+        message: result.success
+          ? "Document processed successfully"
+          : "Document processing failed",
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -240,7 +249,7 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId, docId } = req.params;
@@ -251,31 +260,31 @@ export class EnhancedDocumentController {
           id: docId,
           projectId: projectId,
           project: {
-            professorId: req.user.id
-          }
-        }
+            professorId: req.user.id,
+          },
+        },
       });
 
       if (!document) {
-        throw createError('Document not found or access denied', 404);
+        throw createError("Document not found or access denied", 404);
       }
 
-      // Delete document using enhanced RAG service
-      await enhancedRAGService.deleteDocument(docId);
+      // Delete document using RAG service
+      await ragService.deleteDocument(docId);
 
       // Delete from database
       await prisma.document.delete({
         where: {
-          id: docId
-        }
+          id: docId,
+        },
       });
 
       res.status(200).json({
-        message: 'Document deleted successfully',
+        message: "Document deleted successfully",
         data: {
           documentId: docId,
-          filename: document.filename
-        }
+          filename: document.filename,
+        },
       });
     } catch (error) {
       next(error);
@@ -292,7 +301,7 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId } = req.params;
@@ -301,19 +310,19 @@ export class EnhancedDocumentController {
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError("Project not found or access denied", 404);
       }
 
-      const status = await enhancedRAGService.getProjectStatus(projectId);
+      const status = await ragService.getProjectStatus(projectId);
 
       res.status(200).json({
-        message: 'Processing status retrieved successfully',
-        data: status
+        message: "Processing status retrieved successfully",
+        data: status,
       });
     } catch (error) {
       next(error);
@@ -330,7 +339,7 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId } = req.params;
@@ -339,25 +348,25 @@ export class EnhancedDocumentController {
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError("Project not found or access denied", 404);
       }
 
-      const results = await enhancedRAGService.processProject(projectId);
+      const results = await ragService.processProject(projectId);
 
       res.status(200).json({
-        message: 'Project processing completed',
+        message: "Project processing completed",
         data: {
           projectId,
           results,
           totalDocuments: results.length,
-          successfullyProcessed: results.filter(r => r.success).length,
-          failed: results.filter(r => !r.success).length,
-        }
+          successfullyProcessed: results.filter((r) => r.success).length,
+          failed: results.filter((r) => !r.success).length,
+        },
       });
     } catch (error) {
       next(error);
@@ -374,37 +383,43 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId } = req.params;
-      const { query, type = 'question' } = educationalQuerySchema.parse(req.body);
+      const { query, type = "question" } = educationalQuerySchema.parse(
+        req.body
+      );
 
       // Verify project exists and belongs to user
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError("Project not found or access denied", 404);
       }
 
-      const result = await enhancedRAGService.educationalQuery(projectId, query, type);
+      const result = await ragService.educationalQuery(
+        projectId,
+        query,
+        type
+      );
 
       res.status(200).json({
-        message: 'Educational query completed successfully',
+        message: "Educational query completed successfully",
         data: {
           query,
           type,
-          ...result
-        }
+          ...result,
+        },
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return next(createError('Invalid input', 400));
+        return next(createError("Invalid input", 400));
       }
       next(error);
     }
@@ -420,21 +435,21 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const [healthStatus, configuration] = await Promise.all([
-        enhancedRAGService.healthCheck(),
-        enhancedRAGService.getConfiguration()
+        ragService.healthCheck(),
+        ragService.getConfiguration(),
       ]);
 
       res.status(200).json({
-        message: 'System status retrieved successfully',
+        message: "System status retrieved successfully",
         data: {
           health: healthStatus,
           configuration,
           timestamp: new Date().toISOString(),
-        }
+        },
       });
     } catch (error) {
       next(error);
@@ -451,7 +466,7 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId } = req.params;
@@ -460,19 +475,20 @@ export class EnhancedDocumentController {
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError("Project not found or access denied", 404);
       }
 
-      const recommendations = await enhancedRAGService.getProcessingRecommendations(projectId);
+      const recommendations =
+        await ragService.getProcessingRecommendations(projectId);
 
       res.status(200).json({
-        message: 'Processing recommendations retrieved successfully',
-        data: recommendations
+        message: "Processing recommendations retrieved successfully",
+        data: recommendations,
       });
     } catch (error) {
       next(error);
@@ -489,7 +505,7 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId } = req.params;
@@ -498,19 +514,21 @@ export class EnhancedDocumentController {
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError("Project not found or access denied", 404);
       }
 
-      const analysis = await enhancedRAGService.analyzeProjectDocuments(projectId);
+      const analysis = await ragService.analyzeProjectDocuments(
+        projectId
+      );
 
       res.status(200).json({
-        message: 'Document analysis completed successfully',
-        data: analysis
+        message: "Document analysis completed successfully",
+        data: analysis,
       });
     } catch (error) {
       next(error);
@@ -527,7 +545,7 @@ export class EnhancedDocumentController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id: projectId } = req.params;
@@ -536,19 +554,19 @@ export class EnhancedDocumentController {
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError("Project not found or access denied", 404);
       }
 
-      const exportData = await enhancedRAGService.exportProjectData(projectId);
+      const exportData = await ragService.exportProjectData(projectId);
 
       res.status(200).json({
-        message: 'Project data exported successfully',
-        data: exportData
+        message: "Project data exported successfully",
+        data: exportData,
       });
     } catch (error) {
       next(error);

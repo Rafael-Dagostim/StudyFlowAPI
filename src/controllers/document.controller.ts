@@ -98,18 +98,15 @@ export class DocumentController {
       }
 
       res.status(201).json({
-        message: `Successfully uploaded ${uploadedDocuments.length} document(s)`,
-        data: {
-          uploaded: uploadedDocuments.length,
-          failed: files.length - uploadedDocuments.length,
-          documents: uploadedDocuments.map((doc) => ({
-            id: doc.id,
-            filename: doc.filename,
-            size: doc.size,
-            mimeType: doc.mimeType,
-            uploadedAt: doc.createdAt,
-          })),
-        },
+        uploaded: uploadedDocuments.length,
+        failed: files.length - uploadedDocuments.length,
+        documents: uploadedDocuments.map((doc) => ({
+          id: doc.id,
+          filename: doc.filename,
+          size: doc.size,
+          mimeType: doc.mimeType,
+          uploadedAt: doc.createdAt,
+        })),
       });
     } catch (error) {
       next(error);
@@ -169,13 +166,10 @@ export class DocumentController {
       });
 
       res.status(200).json({
-        message: "Documents retrieved successfully",
-        data: {
-          projectId,
-          documents,
-          totalCount: documents.length,
-          totalSize: documents.reduce((sum, doc) => sum + doc.size, 0),
-        },
+        projectId,
+        documents,
+        totalCount: documents.length,
+        totalSize: documents.reduce((sum, doc) => sum + doc.size, 0),
       });
     } catch (error) {
       next(error);
@@ -227,10 +221,7 @@ export class DocumentController {
         throw createError("Document not found or access denied", 404);
       }
 
-      res.status(200).json({
-        message: "Document retrieved successfully",
-        data: document,
-      });
+      res.status(200).json(document);
     } catch (error) {
       next(error);
     }
@@ -269,13 +260,10 @@ export class DocumentController {
       const downloadUrl = await S3Service.getDownloadUrl(document.s3Key);
 
       res.status(200).json({
-        message: "Download URL generated successfully",
-        data: {
-          documentId: document.id,
-          filename: document.filename,
-          downloadUrl: downloadUrl,
-          expiresIn: "1 hour",
-        },
+        documentId: document.id,
+        filename: document.filename,
+        downloadUrl: downloadUrl,
+        expiresIn: "1 hour",
       });
     } catch (error) {
       next(error);
@@ -321,9 +309,7 @@ export class DocumentController {
         },
       });
 
-      res.status(200).json({
-        message: "Document deleted successfully",
-      });
+      res.status(204).send();
     } catch (error) {
       next(error);
     }
