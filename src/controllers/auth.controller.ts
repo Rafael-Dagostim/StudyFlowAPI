@@ -1,13 +1,15 @@
-import { Response, NextFunction } from 'express';
-import { prisma } from '../utils/database';
-import { AuthUtils } from '../utils/auth';
-import { createError } from '../middleware/error.middleware';
-import { AuthenticatedRequest, SignUpRequest, SignInRequest, AuthResponse } from '../types';
+import { NextFunction, Response } from "express";
+import { createError } from "../middleware/error.middleware";
+import {
+  AuthenticatedRequest,
+  AuthResponse,
+  SignInRequest,
+  SignUpRequest,
+} from "../types";
+import { AuthUtils } from "../utils/auth";
+import { prisma } from "../utils/database";
 
 export class AuthController {
-  /**
-   * Sign up a new professor
-   */
   static async signUp(
     req: AuthenticatedRequest,
     res: Response,
@@ -18,11 +20,11 @@ export class AuthController {
 
       // Check if professor already exists
       const existingProfessor = await prisma.professor.findUnique({
-        where: { email }
+        where: { email },
       });
 
       if (existingProfessor) {
-        throw createError('A professor with this email already exists', 409);
+        throw createError("A professor with this email already exists", 409);
       }
 
       // Hash password
@@ -33,37 +35,28 @@ export class AuthController {
         data: {
           name,
           email,
-          password: hashedPassword
+          password: hashedPassword,
         },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          createdAt: true
-        }
       });
 
       // Generate tokens
       const { accessToken, refreshToken } = AuthUtils.generateTokens({
         id: professor.id,
         email: professor.email,
-        name: professor.name
+        name: professor.name,
       });
 
       const response: AuthResponse = {
         professor: {
           id: professor.id,
           name: professor.name,
-          email: professor.email
+          email: professor.email,
         },
         accessToken,
-        refreshToken
+        refreshToken,
       };
 
-      res.status(201).json({
-        message: 'Professor registered successfully',
-        data: response
-      });
+      res.status(201).json(response);
     } catch (error) {
       next(error);
     }
@@ -82,41 +75,41 @@ export class AuthController {
 
       // Find professor
       const professor = await prisma.professor.findUnique({
-        where: { email }
+        where: { email },
       });
 
       if (!professor) {
-        throw createError('Invalid email or password', 401);
+        throw createError("Invalid email or password", 401);
       }
 
       // Verify password
-      const isPasswordValid = await AuthUtils.comparePassword(password, professor.password);
+      const isPasswordValid = await AuthUtils.comparePassword(
+        password,
+        professor.password
+      );
 
       if (!isPasswordValid) {
-        throw createError('Invalid email or password', 401);
+        throw createError("Invalid email or password", 401);
       }
 
       // Generate tokens
       const { accessToken, refreshToken } = AuthUtils.generateTokens({
         id: professor.id,
         email: professor.email,
-        name: professor.name
+        name: professor.name,
       });
 
       const response: AuthResponse = {
         professor: {
           id: professor.id,
           name: professor.name,
-          email: professor.email
+          email: professor.email,
         },
         accessToken,
-        refreshToken
+        refreshToken,
       };
 
-      res.status(200).json({
-        message: 'Professor signed in successfully',
-        data: response
-      });
+      res.status(200).json(response);
     } catch (error) {
       next(error);
     }
@@ -134,7 +127,7 @@ export class AuthController {
       const { refreshToken } = req.body;
 
       if (!refreshToken) {
-        throw createError('Refresh token is required', 400);
+        throw createError("Refresh token is required", 400);
       }
 
       // Verify refresh token
@@ -146,27 +139,24 @@ export class AuthController {
         select: {
           id: true,
           name: true,
-          email: true
-        }
+          email: true,
+        },
       });
 
       if (!professor) {
-        throw createError('Professor not found', 404);
+        throw createError("Professor not found", 404);
       }
 
       // Generate new tokens
       const tokens = AuthUtils.generateTokens({
         id: professor.id,
         email: professor.email,
-        name: professor.name
+        name: professor.name,
       });
 
       res.status(200).json({
-        message: 'Token refreshed successfully',
-        data: {
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken
-        }
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
       });
     } catch (error) {
       next(error);
@@ -183,7 +173,7 @@ export class AuthController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const professor = await prisma.professor.findUnique({
@@ -195,20 +185,17 @@ export class AuthController {
           createdAt: true,
           _count: {
             select: {
-              projects: true
-            }
-          }
-        }
+              projects: true,
+            },
+          },
+        },
       });
 
       if (!professor) {
-        throw createError('Professor not found', 404);
+        throw createError("Professor not found", 404);
       }
 
-      res.status(200).json({
-        message: 'Profile retrieved successfully',
-        data: professor
-      });
+      res.status(200).json(professor);
     } catch (error) {
       next(error);
     }
@@ -224,7 +211,7 @@ export class AuthController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { name } = req.body;
@@ -236,14 +223,11 @@ export class AuthController {
           id: true,
           name: true,
           email: true,
-          updatedAt: true
-        }
+          updatedAt: true,
+        },
       });
 
-      res.status(200).json({
-        message: 'Profile updated successfully',
-        data: updatedProfessor
-      });
+      res.status(200).json(updatedProfessor);
     } catch (error) {
       next(error);
     }

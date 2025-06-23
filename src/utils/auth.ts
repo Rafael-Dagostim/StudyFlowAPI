@@ -1,11 +1,10 @@
-import jwt, { SignOptions } from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import { ApiError } from '../types';
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || "7d";
 
 export interface TokenPayload {
   id: string;
@@ -14,18 +13,15 @@ export interface TokenPayload {
 }
 
 export class AuthUtils {
-  /**
-   * Hash a password using bcrypt
-   */
   static async hashPassword(password: string): Promise<string> {
     const saltRounds = 12;
     return bcrypt.hash(password, saltRounds);
   }
 
-  /**
-   * Compare a plain password with a hashed password
-   */
-  static async comparePassword(password: string, hashedPassword: string): Promise<boolean> {
+  static async comparePassword(
+    password: string,
+    hashedPassword: string
+  ): Promise<boolean> {
     return bcrypt.compare(password, hashedPassword);
   }
 
@@ -51,7 +47,7 @@ export class AuthUtils {
     try {
       return jwt.verify(token, JWT_SECRET) as TokenPayload;
     } catch (error) {
-      throw new Error('Invalid access token');
+      throw new Error("Invalid access token");
     }
   }
 
@@ -62,7 +58,7 @@ export class AuthUtils {
     try {
       return jwt.verify(token, JWT_REFRESH_SECRET) as TokenPayload;
     } catch (error) {
-      throw new Error('Invalid refresh token');
+      throw new Error("Invalid refresh token");
     }
   }
 
@@ -71,15 +67,15 @@ export class AuthUtils {
    */
   static extractTokenFromHeader(authHeader: string | undefined): string {
     if (!authHeader) {
-      throw new Error('Authorization header missing');
+      throw new Error("Authorization header missing");
     }
 
     // Handle potential whitespace issues
     const cleanHeader = authHeader.trim();
-    const [bearer, token] = cleanHeader.split(' ');
-    
-    if (bearer !== 'Bearer' || !token) {
-      throw new Error('Invalid authorization header format');
+    const [bearer, token] = cleanHeader.split(" ");
+
+    if (bearer !== "Bearer" || !token) {
+      throw new Error("Invalid authorization header format");
     }
 
     return token.trim();

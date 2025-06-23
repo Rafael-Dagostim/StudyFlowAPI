@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
-import { AuthUtils } from '../utils/auth';
-import { AuthenticatedRequest } from '../types';
+import { NextFunction, Response } from "express";
+import { AuthenticatedRequest } from "../types";
+import { AuthUtils } from "../utils/auth";
 
 export const authenticate = async (
   req: AuthenticatedRequest,
@@ -10,13 +10,13 @@ export const authenticate = async (
   try {
     const token = AuthUtils.extractTokenFromHeader(req.headers.authorization);
     const payload = AuthUtils.verifyAccessToken(token);
-    
+
     req.user = payload;
     next();
   } catch (error) {
     res.status(401).json({
-      error: 'Unauthorized',
-      message: error instanceof Error ? error.message : 'Authentication failed'
+      error: "Unauthorized",
+      message: error instanceof Error ? error.message : "Authentication failed",
     });
   }
 };
