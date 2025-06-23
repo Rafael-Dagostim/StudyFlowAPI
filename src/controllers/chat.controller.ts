@@ -1,8 +1,8 @@
-import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-import { z } from 'zod';
-import { ragService } from '../services/rag.service';
-import { AuthenticatedRequest } from '../types';
+import { PrismaClient } from "@prisma/client";
+import { Response } from "express";
+import { z } from "zod";
+import { ragService } from "../services/rag.service";
+import { AuthenticatedRequest } from "../types";
 
 const prisma = new PrismaClient();
 
@@ -27,13 +27,16 @@ export class ChatController {
   /**
    * Start a new conversation
    */
-  static async startConversation(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
+  static async startConversation(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response | void> {
     try {
       const { projectId, title } = startConversationSchema.parse(req.body);
       const professorId = req.user?.id;
 
       if (!professorId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
       // Verify project ownership
@@ -45,7 +48,7 @@ export class ChatController {
       });
 
       if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
+        return res.status(404).json({ error: "Project not found" });
       }
 
       // Create conversation
@@ -64,213 +67,45 @@ export class ChatController {
         messages: [],
       });
     } catch (error) {
-      console.error('Error starting conversation:', error);
-      
+      console.error("Error starting conversation:", error);
+
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: 'Invalid input', details: error.errors });
+        return res
+          .status(400)
+          .json({ error: "Invalid input", details: error.errors });
       }
-      
-      res.status(500).json({ error: 'Failed to start conversation' });
+
+      res.status(500).json({ error: "Failed to start conversation" });
     }
   }
 
   /**
    * Send a message in an existing conversation
+   * DEPRECATED: Use WebSocket 'chat:start' event for real-time messaging
+   * This method is kept for legacy compatibility only
    */
-  static async sendMessage(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
-    try {
-      const { conversationId, message } = sendMessageSchema.parse(req.body);
-      const professorId = req.user?.id;
-
-      if (!professorId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      // Verify conversation access
-      const conversation = await prisma.conversation.findFirst({
-        where: {
-          id: conversationId,
-          project: {
-            professorId,
-          },
-        },
-        include: {
-          project: true,
-          messages: {
-            orderBy: { createdAt: 'asc' },
-          },
-        },
-      });
-
-      if (!conversation) {
-        return res.status(404).json({ error: 'Conversation not found' });
-      }
-
-      // Save user message
-      const userMessage = await prisma.message.create({
-        data: {
-          conversationId,
-          role: 'USER',
-          content: message,
-        },
-      });
-
-      // Get conversation history for context
-      const chatHistory = await ragService.getConversationHistory(conversationId);
-
-      // Query RAG system with memory
-      const ragResult = await ragService.queryDocumentsWithMemory(
-        conversation.project.id, 
-        message,
-        chatHistory
-      );
-
-      // Save assistant message
-      const assistantMessage = await prisma.message.create({
-        data: {
-          conversationId,
-          role: 'ASSISTANT',
-          content: ragResult.answer,
-          metadata: {
-            tokensUsed: ragResult.tokensUsed,
-            sources: ragResult.sources,
-          },
-        },
-      });
-
-      // Return both messages
-      res.json({
-        userMessage: {
-          id: userMessage.id,
-          role: userMessage.role,
-          content: userMessage.content,
-          createdAt: userMessage.createdAt,
-        },
-        assistantMessage: {
-          id: assistantMessage.id,
-          role: assistantMessage.role,
-          content: assistantMessage.content,
-          createdAt: assistantMessage.createdAt,
-          metadata: assistantMessage.metadata,
-        },
-        sources: ragResult.sources,
-        tokensUsed: ragResult.tokensUsed,
-      });
-    } catch (error) {
-      console.error('Error sending message:', error);
-      
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: 'Invalid input', details: error.errors });
-      }
-      
-      res.status(500).json({ error: 'Failed to send message' });
-    }
-  }
+  // Method removed - use WebSocket for messaging
 
   /**
    * Start a new conversation with an initial message
+   * DEPRECATED: Use WebSocket 'chat:start' event for real-time messaging
+   * This method is kept for legacy compatibility only
    */
-  static async newConversationWithMessage(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
-    try {
-      const { projectId, message, title } = newConversationSchema.parse(req.body);
-      const professorId = req.user?.id;
-
-      if (!professorId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      // Verify project ownership
-      const project = await prisma.project.findFirst({
-        where: {
-          id: projectId,
-          professorId,
-        },
-      });
-
-      if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
-      }
-
-      // Create conversation
-      const conversation = await prisma.conversation.create({
-        data: {
-          projectId,
-          title: title || `Chat: ${message.substring(0, 50)}...`,
-        },
-      });
-
-      // Save user message
-      const userMessage = await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          role: 'USER',
-          content: message,
-        },
-      });
-
-      // Query RAG system
-      const ragResult = await ragService.queryDocuments(projectId, message);
-
-      // Save assistant message
-      const assistantMessage = await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          role: 'ASSISTANT',
-          content: ragResult.answer,
-          metadata: {
-            tokensUsed: ragResult.tokensUsed,
-            sources: ragResult.sources,
-          },
-        },
-      });
-
-      // Return conversation with messages
-      res.status(201).json({
-        conversation: {
-          id: conversation.id,
-          projectId: conversation.projectId,
-          title: conversation.title,
-          createdAt: conversation.createdAt,
-        },
-        messages: [
-          {
-            id: userMessage.id,
-            role: userMessage.role,
-            content: userMessage.content,
-            createdAt: userMessage.createdAt,
-          },
-          {
-            id: assistantMessage.id,
-            role: assistantMessage.role,
-            content: assistantMessage.content,
-            createdAt: assistantMessage.createdAt,
-            metadata: assistantMessage.metadata,
-          },
-        ],
-        sources: ragResult.sources,
-        tokensUsed: ragResult.tokensUsed,
-      });
-    } catch (error) {
-      console.error('Error creating conversation with message:', error);
-      
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: 'Invalid input', details: error.errors });
-      }
-      
-      res.status(500).json({ error: 'Failed to create conversation' });
-    }
-  }
+  // Method removed - use WebSocket for messaging
 
   /**
    * Get conversation history
    */
-  static async getConversation(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
+  static async getConversation(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response | void> {
     try {
       const { conversationId } = req.params;
       const professorId = req.user?.id;
 
       if (!professorId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
       const conversation = await prisma.conversation.findFirst({
@@ -289,13 +124,13 @@ export class ChatController {
             },
           },
           messages: {
-            orderBy: { createdAt: 'asc' },
+            orderBy: { createdAt: "asc" },
           },
         },
       });
 
       if (!conversation) {
-        return res.status(404).json({ error: 'Conversation not found' });
+        return res.status(404).json({ error: "Conversation not found" });
       }
 
       res.json({
@@ -305,7 +140,7 @@ export class ChatController {
         createdAt: conversation.createdAt,
         updatedAt: conversation.updatedAt,
         project: conversation.project,
-        messages: conversation.messages.map(msg => ({
+        messages: conversation.messages.map((msg) => ({
           id: msg.id,
           role: msg.role,
           content: msg.content,
@@ -314,15 +149,18 @@ export class ChatController {
         })),
       });
     } catch (error) {
-      console.error('Error getting conversation:', error);
-      res.status(500).json({ error: 'Failed to get conversation' });
+      console.error("Error getting conversation:", error);
+      res.status(500).json({ error: "Failed to get conversation" });
     }
   }
 
   /**
    * List conversations for a project
    */
-  static async listConversations(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
+  static async listConversations(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response | void> {
     try {
       const { projectId } = req.params;
       const professorId = req.user?.id;
@@ -331,7 +169,7 @@ export class ChatController {
       const skip = (page - 1) * limit;
 
       if (!professorId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
       // Verify project ownership
@@ -343,7 +181,7 @@ export class ChatController {
       });
 
       if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
+        return res.status(404).json({ error: "Project not found" });
       }
 
       const [conversations, total] = await Promise.all([
@@ -355,11 +193,11 @@ export class ChatController {
                 id: true,
                 createdAt: true,
               },
-              orderBy: { createdAt: 'desc' },
+              orderBy: { createdAt: "desc" },
               take: 1,
             },
           },
-          orderBy: { updatedAt: 'desc' },
+          orderBy: { updatedAt: "desc" },
           skip,
           take: limit,
         }),
@@ -369,7 +207,7 @@ export class ChatController {
       ]);
 
       res.json({
-        conversations: conversations.map(conv => ({
+        conversations: conversations.map((conv) => ({
           id: conv.id,
           projectId: conv.projectId,
           title: conv.title,
@@ -386,22 +224,27 @@ export class ChatController {
         },
       });
     } catch (error) {
-      console.error('Error listing conversations:', error);
-      res.status(500).json({ error: 'Failed to list conversations' });
+      console.error("Error listing conversations:", error);
+      res.status(500).json({ error: "Failed to list conversations" });
     }
   }
 
   /**
    * Update conversation title
    */
-  static async updateConversation(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
+  static async updateConversation(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response | void> {
     try {
       const { conversationId } = req.params;
-      const { title } = z.object({ title: z.string().min(1).max(200) }).parse(req.body);
+      const { title } = z
+        .object({ title: z.string().min(1).max(200) })
+        .parse(req.body);
       const professorId = req.user?.id;
 
       if (!professorId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
       // Verify conversation ownership
@@ -415,7 +258,7 @@ export class ChatController {
       });
 
       if (!conversation) {
-        return res.status(404).json({ error: 'Conversation not found' });
+        return res.status(404).json({ error: "Conversation not found" });
       }
 
       const updatedConversation = await prisma.conversation.update({
@@ -429,26 +272,31 @@ export class ChatController {
         updatedAt: updatedConversation.updatedAt,
       });
     } catch (error) {
-      console.error('Error updating conversation:', error);
-      
+      console.error("Error updating conversation:", error);
+
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: 'Invalid input', details: error.errors });
+        return res
+          .status(400)
+          .json({ error: "Invalid input", details: error.errors });
       }
-      
-      res.status(500).json({ error: 'Failed to update conversation' });
+
+      res.status(500).json({ error: "Failed to update conversation" });
     }
   }
 
   /**
    * Delete a conversation
    */
-  static async deleteConversation(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
+  static async deleteConversation(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response | void> {
     try {
       const { conversationId } = req.params;
       const professorId = req.user?.id;
 
       if (!professorId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
       // Verify conversation ownership
@@ -462,30 +310,33 @@ export class ChatController {
       });
 
       if (!conversation) {
-        return res.status(404).json({ error: 'Conversation not found' });
+        return res.status(404).json({ error: "Conversation not found" });
       }
 
       await prisma.conversation.delete({
         where: { id: conversationId },
       });
 
-      res.json({ message: 'Conversation deleted successfully' });
+      res.json({ message: "Conversation deleted successfully" });
     } catch (error) {
-      console.error('Error deleting conversation:', error);
-      res.status(500).json({ error: 'Failed to delete conversation' });
+      console.error("Error deleting conversation:", error);
+      res.status(500).json({ error: "Failed to delete conversation" });
     }
   }
 
   /**
    * Get RAG system status for a project
    */
-  static async getRAGStatus(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
+  static async getRAGStatus(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response | void> {
     try {
       const { projectId } = req.params;
       const professorId = req.user?.id;
 
       if (!professorId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
       // Verify project ownership
@@ -497,27 +348,30 @@ export class ChatController {
       });
 
       if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
+        return res.status(404).json({ error: "Project not found" });
       }
 
       const status = await ragService.getProjectStatus(projectId);
       res.json(status);
     } catch (error) {
-      console.error('Error getting RAG status:', error);
-      res.status(500).json({ error: 'Failed to get RAG status' });
+      console.error("Error getting RAG status:", error);
+      res.status(500).json({ error: "Failed to get RAG status" });
     }
   }
 
   /**
    * Process project documents for RAG
    */
-  static async processProject(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
+  static async processProject(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response | void> {
     try {
       const { projectId } = req.params;
       const professorId = req.user?.id;
 
       if (!professorId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
       // Verify project ownership
@@ -529,40 +383,43 @@ export class ChatController {
       });
 
       if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
+        return res.status(404).json({ error: "Project not found" });
       }
 
       const results = await ragService.processProject(projectId);
-      
+
       res.json({
-        message: 'Project processing completed',
+        message: "Project processing completed",
         results,
         totalDocuments: results.length,
-        successfullyProcessed: results.filter(r => r.success).length,
-        failed: results.filter(r => !r.success).length,
+        successfullyProcessed: results.filter((r) => r.success).length,
+        failed: results.filter((r) => !r.success).length,
       });
     } catch (error) {
-      console.error('Error processing project:', error);
-      res.status(500).json({ error: 'Failed to process project' });
+      console.error("Error processing project:", error);
+      res.status(500).json({ error: "Failed to process project" });
     }
   }
 
   /**
    * Health check for RAG services
    */
-  static async healthCheck(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
+  static async healthCheck(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response | void> {
     try {
       const healthStatus = await ragService.healthCheck();
       const configuration = ragService.getConfiguration();
-      
+
       res.json({
         ...healthStatus,
         configuration,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      console.error('Error in RAG health check:', error);
-      res.status(500).json({ error: 'Health check failed' });
+      console.error("Error in RAG health check:", error);
+      res.status(500).json({ error: "Health check failed" });
     }
   }
 }
