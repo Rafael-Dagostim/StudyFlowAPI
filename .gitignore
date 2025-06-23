@@ -83,3 +83,10 @@ prisma/*.db-journal
 # Temporary files
 tmp/
 temp/
+
+# Claude-related files
+.claude/
+claude_cache/
+.claude_chat_cache/
+.claude_memory/
+CLAUDE.md

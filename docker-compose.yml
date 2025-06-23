@@ -10,7 +10,6 @@ services:
       POSTGRES_PASSWORD: study_flow_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     ports:
       - "5432:5432"
     networks:
@@ -23,7 +22,7 @@ services:
 
   # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:v1.7.4
+    image: qdrant/qdrant:v1.14.0
     container_name: study-flow-qdrant
     restart: unless-stopped
     ports:
@@ -51,6 +50,11 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    extra_hosts:
+      - "api.openai.com:104.18.7.192"
     environment:
       NODE_ENV: production
       PORT: 3000
