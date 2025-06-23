@@ -1,10 +1,15 @@
+import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { v4 as uuidv4 } from "uuid";
 import { prisma } from "../utils/database";
+import { LangChainDocumentProcessor } from "./langchain-document.service";
 import { openaiService } from "./openai.service";
 import { qdrantService } from "./qdrant.service";
-import { LangChainDocumentProcessor } from "./langchain-document.service";
 import { S3Service } from "./s3.service";
-import { v4 as uuidv4 } from "uuid";
-import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { conversationMemoryService } from "./conversation-memory.service";
+
+// ===========================
+// INTERFACES & TYPES
+// ===========================
 
 export interface ProcessDocumentResult {
   documentId: string;
@@ -48,6 +53,53 @@ export interface DocumentChunk {
   };
 }
 
+export interface BatchProcessResult {
+  successful: number;
+  failed: number;
+  results: Array<{
+    filename: string;
+    success: boolean;
+    document?: any;
+    processResult?: ProcessDocumentResult;
+    error?: string;
+  }>;
+}
+
+export interface ProjectAnalysis {
+  projectId: string;
+  documentCount: number;
+  totalWords: number;
+  totalReadingTime: number;
+  languages: string[];
+  complexityDistribution: {
+    High: number;
+    Medium: number;
+    Low: number;
+  };
+  documents: Array<{
+    documentId: string;
+    filename: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    statistics: any;
+    estimatedLanguage: string;
+    complexity: string;
+  }>;
+}
+
+export interface ProcessingRecommendation {
+  type: 'processing' | 'compatibility' | 'setup' | 'performance';
+  priority: 'high' | 'medium' | 'low';
+  message: string;
+  action: string;
+  files?: string[];
+}
+
+// ===========================
+// CONSOLIDATED RAG SERVICE
+// ===========================
+
 export class RAGService {
   private chunkSize: number;
   private chunkOverlap: number;
@@ -62,6 +114,10 @@ export class RAGService {
       process.env.RAG_SIMILARITY_THRESHOLD || "0.4"
     );
   }
+
+  // ===========================
+  // CORE DOCUMENT PROCESSING
+  // ===========================
 
   /**
    * Process a single document for RAG using LangChain
@@ -208,7 +264,7 @@ export class RAGService {
   }
 
   /**
-   * Process all documents in a project
+   * Process all unprocessed documents in a project
    */
   async processProject(projectId: string): Promise<ProcessDocumentResult[]> {
     console.log(`Processing all documents in project: ${projectId}`);
@@ -228,6 +284,142 @@ export class RAGService {
 
     return results;
   }
+
+  /**
+   * Reprocess a document (delete existing embeddings and reprocess)
+   */
+  async reprocessDocument(documentId: string): Promise<ProcessDocumentResult> {
+    try {
+      const document = await prisma.document.findUnique({
+        where: { id: documentId },
+        include: { project: true },
+      });
+
+      if (!document) {
+        throw new Error("Document not found");
+      }
+
+      // Delete existing embeddings if collection exists
+      if (document.project.qdrantCollectionId) {
+        try {
+          await qdrantService.deleteDocumentChunks(
+            document.project.qdrantCollectionId,
+            documentId
+          );
+        } catch (error) {
+          console.warn("Could not delete existing chunks:", error);
+        }
+      }
+
+      // Reset processed status
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { processedAt: null },
+      });
+
+      // Process again
+      return await this.processDocument(documentId);
+    } catch (error) {
+      console.error("Error reprocessing document:", error);
+      return {
+        documentId,
+        chunksProcessed: 0,
+        collectionName: "",
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Upload and process a document in one operation using LangChain
+   */
+  async uploadAndProcessDocument(
+    file: Express.Multer.File,
+    projectId: string,
+    uploadedById: string
+  ): Promise<{
+    document: any;
+    processResult: ProcessDocumentResult;
+  }> {
+    try {
+      // Validate file with LangChain processor
+      const validation = LangChainDocumentProcessor.validateFile(file);
+      if (!validation.isValid) {
+        throw new Error(validation.error);
+      }
+
+      // Upload file to storage
+      const s3Key = await S3Service.uploadFile(file, projectId);
+
+      // Process document with LangChain to extract text and analyze
+      const processedDocument =
+        await LangChainDocumentProcessor.processDocument(file);
+
+      // Create document record
+      const document = await prisma.document.create({
+        data: {
+          filename: file.originalname,
+          originalName: file.originalname,
+          s3Key,
+          s3Bucket: process.env.AWS_S3_BUCKET || "local-storage",
+          mimeType: file.mimetype,
+          size: file.size,
+          textContent: processedDocument.text,
+          projectId,
+          uploadedById,
+        },
+      });
+
+      // Process document for RAG (this will use the already extracted text)
+      const processResult = await this.processDocument(document.id);
+
+      return {
+        document,
+        processResult,
+      };
+    } catch (error) {
+      console.error("Error in uploadAndProcessDocument:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a document and its embeddings
+   */
+  async deleteDocument(documentId: string): Promise<void> {
+    const document = await prisma.document.findUnique({
+      where: { id: documentId },
+      include: { project: true },
+    });
+
+    if (!document) {
+      throw new Error("Document not found");
+    }
+
+    // Delete embeddings from Qdrant
+    if (document.project.qdrantCollectionId) {
+      try {
+        await qdrantService.deleteDocumentChunks(
+          document.project.qdrantCollectionId,
+          documentId
+        );
+      } catch (error) {
+        console.warn("Could not delete document chunks from Qdrant:", error);
+      }
+    }
+
+    // Delete file from storage
+    try {
+      await S3Service.deleteFile(document.s3Key);
+    } catch (error) {
+      console.warn("Could not delete file from storage:", error);
+    }
+  }
+
+  // ===========================
+  // QUERY & CONVERSATION
+  // ===========================
 
   /**
    * Query documents using RAG
@@ -308,16 +500,16 @@ export class RAGService {
   }
 
   /**
-   * Query documents with conversation memory
+   * Query documents with enhanced conversation memory
    */
   async queryDocumentsWithMemory(
     projectId: string,
     query: string,
-    conversationHistory: Array<{ role: "USER" | "ASSISTANT"; content: string }>
+    conversationId: string
   ): Promise<QueryResult> {
     try {
       console.log(
-        `Querying project ${projectId} with memory. Query: "${query}"`
+        `Querying project ${projectId} with enhanced memory. Query: "${query}"`
       );
 
       // Get project and collection info
@@ -328,6 +520,11 @@ export class RAGService {
       if (!project || !project.qdrantCollectionId) {
         throw new Error("Project not found or no documents processed");
       }
+
+      // Get optimized conversation memory
+      const conversationMemory = await conversationMemoryService.getConversationMemory(conversationId);
+      
+      console.log(`Using ${conversationMemory.memoryType} memory with ${conversationMemory.recentMessages.length} messages and ${conversationMemory.tokenCount} tokens`);
 
       // Generate query embedding
       const queryEmbedding = await openaiService.generateQueryEmbedding(query);
@@ -341,11 +538,19 @@ export class RAGService {
       );
 
       if (searchResults.length === 0) {
+        // Even with no document context, we can still provide a response using conversation memory
+        const memoryMessages = conversationMemoryService.formatMemoryForAI(conversationMemory);
+        memoryMessages.push({
+          role: "user",
+          content: query
+        });
+
+        const aiResponse = await openaiService.generateChatCompletion(memoryMessages);
+
         return {
-          answer:
-            "Desculpe, não encontrei informações relevantes nos documentos para responder sua pergunta.",
+          answer: aiResponse.content,
           sources: [],
-          tokensUsed: { prompt: 0, completion: 0, total: 0 },
+          tokensUsed: aiResponse.tokensUsed,
         };
       }
 
@@ -354,26 +559,18 @@ export class RAGService {
         (result) => result.chunk.content
       );
 
-      // Build conversation messages with memory
-      const messages: ChatCompletionMessageParam[] = [];
-
-      // Add conversation history
-      conversationHistory.forEach((msg) => {
-        messages.push({
-          role: msg.role === "USER" ? "user" : "assistant",
-          content: msg.content,
-        });
-      });
-
+      // Build messages with memory and context
+      const memoryMessages = conversationMemoryService.formatMemoryForAI(conversationMemory);
+      
       // Add current query
-      messages.push({
+      memoryMessages.push({
         role: "user",
         content: query,
       });
 
-      // Generate AI response with context and memory
+      // Generate AI response with enhanced context
       const aiResponse = await openaiService.generateChatCompletion(
-        messages,
+        memoryMessages,
         contextDocuments
       );
 
@@ -402,25 +599,106 @@ export class RAGService {
   }
 
   /**
-   * Get conversation history for memory
+   * Educational query with different types and memory
    */
-  async getConversationHistory(
-    conversationId: string
-  ): Promise<Array<{ role: "USER" | "ASSISTANT"; content: string }>> {
-    const messages = await prisma.message.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: "asc" },
-      take: 10, // Limit to last 10 messages to avoid token limits
-    });
+  async educationalQuery(
+    projectId: string,
+    query: string,
+    type: "question" | "summary" | "quiz" | "explanation" = "question",
+    conversationId?: string
+  ): Promise<QueryResult> {
+    // Enhance query based on type
+    let enhancedQuery = query;
 
-    return messages.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
+    switch (type) {
+      case "summary":
+        enhancedQuery = `Por favor, faça um resumo detalhado sobre: ${query}`;
+        break;
+      case "quiz":
+        enhancedQuery = `Crie questões de múltipla escolha com 4 alternativas sobre: ${query}`;
+        break;
+      case "explanation":
+        enhancedQuery = `Explique detalhadamente o conceito e forneça exemplos práticos sobre: ${query}`;
+        break;
+      default:
+        enhancedQuery = query;
+    }
+
+    // Use memory if conversation ID provided
+    if (conversationId) {
+      return await this.queryDocumentsWithMemory(projectId, enhancedQuery, conversationId);
+    } else {
+      return await this.queryDocuments(projectId, enhancedQuery);
+    }
   }
 
+  // ===========================
+  // BATCH OPERATIONS
+  // ===========================
+
   /**
-   * Get project processing status
+   * Batch process multiple documents with enhanced monitoring
+   */
+  async batchProcessDocuments(
+    files: Express.Multer.File[],
+    projectId: string,
+    uploadedById: string
+  ): Promise<BatchProcessResult> {
+    const results = [];
+    let successful = 0;
+    let failed = 0;
+
+    for (const file of files) {
+      try {
+        // Validate with LangChain processor
+        const validation = LangChainDocumentProcessor.validateFile(file);
+        if (!validation.isValid) {
+          results.push({
+            filename: file.originalname,
+            success: false,
+            error: validation.error,
+          });
+          failed++;
+          continue;
+        }
+
+        // Upload and process
+        const result = await this.uploadAndProcessDocument(
+          file,
+          projectId,
+          uploadedById
+        );
+
+        results.push({
+          filename: file.originalname,
+          success: true,
+          document: result.document,
+          processResult: result.processResult,
+        });
+        successful++;
+      } catch (error) {
+        results.push({
+          filename: file.originalname,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        failed++;
+      }
+    }
+
+    return {
+      successful,
+      failed,
+      results,
+    };
+  }
+
+  // ===========================
+  // PROJECT STATUS & ANALYTICS
+  // ===========================
+
+  /**
+   * Get comprehensive project processing status
    */
   async getProjectStatus(projectId: string) {
     const project = await prisma.project.findUnique({
@@ -431,8 +709,11 @@ export class RAGService {
             id: true,
             filename: true,
             originalName: true,
+            mimeType: true,
+            size: true,
             textContent: true,
             processedAt: true,
+            createdAt: true,
           },
         },
       },
@@ -462,6 +743,26 @@ export class RAGService {
       }
     }
 
+    // Enhanced document analysis
+    const enhancedDocuments = project.documents.map((doc) => {
+      const isLangChainSupported =
+        LangChainDocumentProcessor.isFileTypeSupported(doc.originalName);
+      let analysis = null;
+
+      if (doc.textContent) {
+        analysis = LangChainDocumentProcessor.analyzeDocument(doc.textContent);
+      }
+
+      return {
+        ...doc,
+        isLangChainSupported,
+        analysis,
+        hasText: !!doc.textContent,
+        isProcessed: !!doc.processedAt,
+        supportedByLangChain: isLangChainSupported,
+      };
+    });
+
     return {
       projectId: project.id,
       projectName: project.name,
@@ -472,179 +773,214 @@ export class RAGService {
       processedDocuments,
       pendingProcessing,
       collectionStats,
-      documents: project.documents.map((doc) => ({
-        id: doc.id,
-        filename: doc.filename,
-        originalName: doc.originalName,
-        hasText: !!doc.textContent,
-        isProcessed: !!doc.processedAt,
-        processedAt: doc.processedAt,
-        supportedByLangChain: LangChainDocumentProcessor.isFileTypeSupported(
-          doc.originalName
-        ),
-      })),
+      documents: enhancedDocuments,
+      // Enhanced analytics
+      langChainSupported: enhancedDocuments.filter(
+        (d) => d.isLangChainSupported
+      ).length,
+      totalWords: enhancedDocuments.reduce(
+        (sum, d) => sum + (d.analysis?.statistics.words || 0),
+        0
+      ),
+      estimatedReadingTime: enhancedDocuments.reduce(
+        (sum, d) => sum + (d.analysis?.statistics.readingTimeMinutes || 0),
+        0
+      ),
     };
   }
 
   /**
-   * Reprocess a document (delete existing embeddings and reprocess)
+   * Advanced document analysis for a project
    */
-  async reprocessDocument(documentId: string): Promise<ProcessDocumentResult> {
-    try {
-      const document = await prisma.document.findUnique({
-        where: { id: documentId },
-        include: { project: true },
-      });
-
-      if (!document) {
-        throw new Error("Document not found");
-      }
-
-      // Delete existing embeddings if collection exists
-      if (document.project.qdrantCollectionId) {
-        try {
-          await qdrantService.deleteDocumentChunks(
-            document.project.qdrantCollectionId,
-            documentId
-          );
-        } catch (error) {
-          console.warn("Could not delete existing chunks:", error);
-        }
-      }
-
-      // Reset processed status
-      await prisma.document.update({
-        where: { id: documentId },
-        data: { processedAt: null },
-      });
-
-      // Process again
-      return await this.processDocument(documentId);
-    } catch (error) {
-      console.error("Error reprocessing document:", error);
-      return {
-        documentId,
-        chunksProcessed: 0,
-        collectionName: "",
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
-  /**
-   * Delete a document and its embeddings
-   */
-  async deleteDocument(documentId: string): Promise<void> {
-    const document = await prisma.document.findUnique({
-      where: { id: documentId },
-      include: { project: true },
+  async analyzeProjectDocuments(projectId: string): Promise<ProjectAnalysis> {
+    const documents = await prisma.document.findMany({
+      where: {
+        projectId,
+        textContent: { not: null },
+      },
+      select: {
+        id: true,
+        filename: true,
+        originalName: true,
+        textContent: true,
+        mimeType: true,
+        size: true,
+      },
     });
 
-    if (!document) {
-      throw new Error("Document not found");
-    }
-
-    // Delete embeddings from Qdrant
-    if (document.project.qdrantCollectionId) {
-      try {
-        await qdrantService.deleteDocumentChunks(
-          document.project.qdrantCollectionId,
-          documentId
-        );
-      } catch (error) {
-        console.warn("Could not delete document chunks from Qdrant:", error);
-      }
-    }
-
-    // Delete file from storage
-    try {
-      await S3Service.deleteFile(document.s3Key);
-    } catch (error) {
-      console.warn("Could not delete file from storage:", error);
-    }
-  }
-
-  /**
-   * Upload and process a document in one operation using LangChain
-   */
-  async uploadAndProcessDocument(
-    file: Express.Multer.File,
-    projectId: string,
-    uploadedById: string
-  ): Promise<{
-    document: any;
-    processResult: ProcessDocumentResult;
-  }> {
-    try {
-      // Validate file with LangChain processor
-      const validation = LangChainDocumentProcessor.validateFile(file);
-      if (!validation.isValid) {
-        throw new Error(validation.error);
-      }
-
-      // Upload file to storage
-      const s3Key = await S3Service.uploadFile(file, projectId);
-
-      // Process document with LangChain to extract text and analyze
-      const processedDocument =
-        await LangChainDocumentProcessor.processDocument(file);
-
-      // Create document record
-      const document = await prisma.document.create({
-        data: {
-          filename: file.originalname,
-          originalName: file.originalname,
-          s3Key,
-          s3Bucket: process.env.AWS_S3_BUCKET || "local-storage",
-          mimeType: file.mimetype,
-          size: file.size,
-          textContent: processedDocument.text,
-          projectId,
-          uploadedById,
-        },
-      });
-
-      // Process document for RAG (this will use the already extracted text)
-      const processResult = await this.processDocument(document.id);
-
+    const analyses = documents.map((doc) => {
+      const analysis = LangChainDocumentProcessor.analyzeDocument(
+        doc.textContent!
+      );
       return {
-        document,
-        processResult,
+        documentId: doc.id,
+        filename: doc.filename,
+        originalName: doc.originalName,
+        mimeType: doc.mimeType,
+        size: doc.size,
+        ...analysis,
       };
-    } catch (error) {
-      console.error("Error in uploadAndProcessDocument:", error);
-      throw error;
-    }
+    });
+
+    // Aggregate statistics
+    const totalWords = analyses.reduce((sum, a) => sum + a.statistics.words, 0);
+    const totalReadingTime = analyses.reduce(
+      (sum, a) => sum + a.statistics.readingTimeMinutes,
+      0
+    );
+    const languages = [...new Set(analyses.map((a) => a.estimatedLanguage))];
+    const complexityDistribution = {
+      High: analyses.filter((a) => a.complexity === "High").length,
+      Medium: analyses.filter((a) => a.complexity === "Medium").length,
+      Low: analyses.filter((a) => a.complexity === "Low").length,
+    };
+
+    return {
+      projectId,
+      documentCount: documents.length,
+      totalWords,
+      totalReadingTime,
+      languages,
+      complexityDistribution,
+      documents: analyses,
+    };
   }
 
   /**
-   * Educational query with different types
+   * Get processing recommendations for a project
    */
-  async educationalQuery(
-    projectId: string,
-    query: string,
-    type: "question" | "summary" | "quiz" | "explanation" = "question"
-  ): Promise<QueryResult> {
-    // Enhance query based on type
-    let enhancedQuery = query;
+  async getProcessingRecommendations(projectId: string): Promise<{
+    projectId: string;
+    recommendationCount: number;
+    recommendations: ProcessingRecommendation[];
+  }> {
+    const status = await this.getProjectStatus(projectId);
+    const recommendations: ProcessingRecommendation[] = [];
 
-    switch (type) {
-      case "summary":
-        enhancedQuery = `Por favor, faça um resumo detalhado sobre: ${query}`;
-        break;
-      case "quiz":
-        enhancedQuery = `Crie questões de múltipla escolha com 4 alternativas sobre: ${query}`;
-        break;
-      case "explanation":
-        enhancedQuery = `Explique detalhadamente o conceito e forneça exemplos práticos sobre: ${query}`;
-        break;
-      default:
-        enhancedQuery = query;
+    // Check for unprocessed documents
+    if (status.pendingProcessing > 0) {
+      recommendations.push({
+        type: "processing",
+        priority: "high",
+        message: `${status.pendingProcessing} document(s) need processing`,
+        action: "processAllDocuments",
+      });
     }
 
-    return await this.queryDocuments(projectId, enhancedQuery);
+    // Check for unsupported file types
+    const unsupported = status.documents.filter((d) => !d.isLangChainSupported);
+    if (unsupported.length > 0) {
+      recommendations.push({
+        type: "compatibility",
+        priority: "medium",
+        message: `${unsupported.length} document(s) use unsupported formats`,
+        action: "convertToSupportedFormat",
+        files: unsupported.map((d) => d.filename),
+      });
+    }
+
+    // Check collection health
+    if (!status.hasCollection && status.totalDocuments > 0) {
+      recommendations.push({
+        type: "setup",
+        priority: "high",
+        message: "No vector collection found for processed documents",
+        action: "recreateCollection",
+      });
+    }
+
+    // Performance recommendations
+    if (status.totalDocuments > 50) {
+      recommendations.push({
+        type: "performance",
+        priority: "low",
+        message: "Large number of documents may affect query performance",
+        action: "optimizeCollection",
+      });
+    }
+
+    return {
+      projectId,
+      recommendationCount: recommendations.length,
+      recommendations,
+    };
   }
+
+  /**
+   * Optimize project collection
+   */
+  async optimizeProject(projectId: string) {
+    const status = await this.getProjectStatus(projectId);
+    const recommendations = await this.getProcessingRecommendations(projectId);
+
+    return {
+      projectId,
+      currentStatus: status,
+      recommendations,
+      message:
+        "Project analysis completed. Check recommendations for optimization opportunities.",
+    };
+  }
+
+  /**
+   * Export comprehensive project data
+   */
+  async exportProjectData(projectId: string) {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        documents: true,
+        conversations: {
+          include: {
+            messages: true,
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const analysis = await this.analyzeProjectDocuments(projectId);
+    const status = await this.getProjectStatus(projectId);
+
+    return {
+      project: {
+        id: project.id,
+        name: project.name,
+        subject: project.subject,
+        description: project.description,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+      },
+      documents: project.documents.map((doc) => ({
+        id: doc.id,
+        filename: doc.filename,
+        originalName: doc.originalName,
+        mimeType: doc.mimeType,
+        size: doc.size,
+        hasText: !!doc.textContent,
+        isProcessed: !!doc.processedAt,
+        processedAt: doc.processedAt,
+        createdAt: doc.createdAt,
+      })),
+      conversations: project.conversations.map((conv) => ({
+        id: conv.id,
+        title: conv.title,
+        messageCount: conv.messages.length,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+      })),
+      analysis,
+      status,
+      exportedAt: new Date().toISOString(),
+    };
+  }
+
+  // ===========================
+  // SYSTEM HEALTH & CONFIG
+  // ===========================
 
   /**
    * Health check for RAG services
@@ -652,16 +988,27 @@ export class RAGService {
   async healthCheck() {
     const openaiHealth = await openaiService.validateConfiguration();
     const qdrantHealth = await qdrantService.healthCheck();
+    const memoryConfig = conversationMemoryService.getConfiguration();
 
     return {
       openai: openaiHealth,
       qdrant: qdrantHealth,
+      memory: {
+        isConfigured: true,
+        maxTokens: memoryConfig.maxTokens,
+        maxMessages: memoryConfig.maxMessages,
+      },
+      langChain: {
+        textSplitter: true,
+        supportedFormats: LangChainDocumentProcessor.isFileTypeSupported("test.pdf"),
+      },
+      enhanced: true,
       overall: openaiHealth.isValid && qdrantHealth.isHealthy,
     };
   }
 
   /**
-   * Get RAG configuration
+   * Get comprehensive RAG configuration
    */
   getConfiguration() {
     return {
@@ -670,7 +1017,13 @@ export class RAGService {
       maxChunks: this.maxChunks,
       similarityThreshold: this.similarityThreshold,
       openaiModels: openaiService.getModelInfo(),
-      langChain: LangChainDocumentProcessor.getTextSplitterConfig(),
+      langChain: {
+        ...LangChainDocumentProcessor.getTextSplitterConfig(),
+        supportedFormats: [".pdf", ".docx", ".doc", ".txt", ".md"],
+        processingMethod: "RecursiveCharacterTextSplitter",
+      },
+      memory: conversationMemoryService.getConfiguration(),
+      enhanced: true,
     };
   }
 }

@@ -1,5 +1,5 @@
-import { OpenAI } from 'openai';
-import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { OpenAI } from "openai";
+import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 export class OpenAIService {
   private openai: OpenAI;
@@ -10,67 +10,111 @@ export class OpenAIService {
 
   constructor() {
     if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY environment variable is required');
+      throw new Error("OPENAI_API_KEY environment variable is required");
     }
 
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
 
-    this.embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
-    this.chatModel = process.env.OPENAI_CHAT_MODEL || 'o3-mini';
-    this.maxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '4000');
-    // Removed temperature for o3-mini compatibility
-    // this.temperature = parseFloat(process.env.OPENAI_TEMPERATURE || '0.7');
+    this.embeddingModel =
+      process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
+    this.chatModel = process.env.OPENAI_CHAT_MODEL || "o3-mini";
+    this.maxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || "4000");
   }
 
   /**
-   * Generate embeddings for text chunks
+   * Generate embeddings for text chunks with retry logic
    */
-  async generateEmbeddings(texts: string[]): Promise<number[][]> {
-    try {
-      console.log(`Generating embeddings for ${texts.length} text chunks...`);
-      
-      const response = await this.openai.embeddings.create({
-        model: this.embeddingModel,
-        input: texts,
-        encoding_format: 'float',
-      });
+  async generateEmbeddings(
+    texts: string[],
+    retries: number = 3
+  ): Promise<number[][]> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(
+          `Generating embeddings for ${texts.length} text chunks... (attempt ${attempt}/${retries})`
+        );
 
-      const embeddings = response.data.map(item => item.embedding);
-      console.log(`Generated ${embeddings.length} embeddings successfully`);
-      
-      return embeddings;
-    } catch (error) {
-      console.error('Error generating embeddings:', error);
-      throw new Error(`Failed to generate embeddings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const response = await this.openai.embeddings.create({
+          model: this.embeddingModel,
+          input: texts,
+          encoding_format: "float",
+        });
+
+        const embeddings = response.data.map((item) => item.embedding);
+        console.log(`Generated ${embeddings.length} embeddings successfully`);
+
+        return embeddings;
+      } catch (error) {
+        console.error(
+          `Error generating embeddings (attempt ${attempt}/${retries}):`,
+          error
+        );
+
+        if (attempt === retries) {
+          throw new Error(
+            `Failed to generate embeddings after ${retries} attempts: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
+
+        // Wait before retrying (exponential backoff)
+        const waitTime = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+        console.log(`Retrying in ${waitTime}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      }
     }
+    throw new Error("Unexpected error in generateEmbeddings");
   }
 
   /**
-   * Generate a single embedding for a query
+   * Generate a single embedding for a query with retry logic
    */
-  async generateQueryEmbedding(query: string): Promise<number[]> {
-    try {
-      const response = await this.openai.embeddings.create({
-        model: this.embeddingModel,
-        input: [query],
-        encoding_format: 'float',
-      });
+  async generateQueryEmbedding(
+    query: string,
+    retries: number = 3
+  ): Promise<number[]> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await this.openai.embeddings.create({
+          model: this.embeddingModel,
+          input: [query],
+          encoding_format: "float",
+        });
 
-      return response.data[0].embedding;
-    } catch (error) {
-      console.error('Error generating query embedding:', error);
-      throw new Error(`Failed to generate query embedding: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        return response.data[0].embedding;
+      } catch (error) {
+        console.error(
+          `Error generating query embedding (attempt ${attempt}/${retries}):`,
+          error
+        );
+
+        if (attempt === retries) {
+          throw new Error(
+            `Failed to generate query embedding after ${retries} attempts: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
+
+        // Wait before retrying (exponential backoff)
+        const waitTime = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+        console.log(`Retrying in ${waitTime}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      }
     }
+    throw new Error("Unexpected error in generateQueryEmbedding");
   }
 
   /**
-   * Generate chat completion with context
+   * Generate chat completion with context and retry logic
    */
   async generateChatCompletion(
     messages: ChatCompletionMessageParam[],
-    contextDocuments?: string[]
+    contextDocuments?: string[],
+    retries: number = 3
   ): Promise<{
     content: string;
     tokensUsed: {
@@ -79,82 +123,129 @@ export class OpenAIService {
       total: number;
     };
   }> {
-    try {
-      // Add context to system message if provided
-      const systemMessage = this.buildSystemMessage(contextDocuments);
-      
-      const messagesWithContext: ChatCompletionMessageParam[] = [
-        systemMessage,
-        ...messages
-      ];
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        // Add context to system message if provided
+        const systemMessage = this.buildSystemMessage(contextDocuments);
 
-      console.log(`Generating chat completion with ${messages.length} messages...`);
-      
-      const response = await this.openai.chat.completions.create({
-        model: this.chatModel,
-        messages: messagesWithContext,
-        max_completion_tokens: this.maxTokens,
-        // Note: o3-mini doesn't support temperature parameter
-        // temperature: this.temperature,
-        stream: false,
-      });
+        const messagesWithContext: ChatCompletionMessageParam[] = [
+          systemMessage,
+          ...messages,
+        ];
 
-      const content = response.choices[0]?.message?.content || '';
-      const usage = response.usage;
+        console.log(
+          `Generating chat completion with ${messages.length} messages... (attempt ${attempt}/${retries})`
+        );
 
-      console.log(`Chat completion generated successfully. Tokens used: ${usage?.total_tokens || 0}`);
+        const response = await this.openai.chat.completions.create({
+          model: this.chatModel,
+          messages: messagesWithContext,
+          max_completion_tokens: this.maxTokens,
+          // Note: o3-mini doesn't support temperature parameter
+          // temperature: this.temperature,
+          stream: false,
+        });
 
-      return {
-        content,
-        tokensUsed: {
-          prompt: usage?.prompt_tokens || 0,
-          completion: usage?.completion_tokens || 0,
-          total: usage?.total_tokens || 0,
-        },
-      };
-    } catch (error) {
-      console.error('Error generating chat completion:', error);
-      throw new Error(`Failed to generate chat completion: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const content = response.choices[0]?.message?.content || "";
+        const usage = response.usage;
+
+        console.log(
+          `Chat completion generated successfully. Tokens used: ${
+            usage?.total_tokens || 0
+          }`
+        );
+
+        return {
+          content,
+          tokensUsed: {
+            prompt: usage?.prompt_tokens || 0,
+            completion: usage?.completion_tokens || 0,
+            total: usage?.total_tokens || 0,
+          },
+        };
+      } catch (error) {
+        console.error(
+          `Error generating chat completion (attempt ${attempt}/${retries}):`,
+          error
+        );
+
+        if (attempt === retries) {
+          throw new Error(
+            `Failed to generate chat completion after ${retries} attempts: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
+
+        // Wait before retrying (exponential backoff)
+        const waitTime = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+        console.log(`Retrying in ${waitTime}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      }
     }
+    throw new Error("Unexpected error in generateChatCompletion");
   }
 
   /**
-   * Generate streaming chat completion
+   * Generate streaming chat completion with enhanced error handling
    */
   async generateStreamingChatCompletion(
     messages: ChatCompletionMessageParam[],
-    contextDocuments?: string[]
+    contextDocuments?: string[],
+    retries: number = 2
   ) {
-    try {
-      const systemMessage = this.buildSystemMessage(contextDocuments);
-      
-      const messagesWithContext: ChatCompletionMessageParam[] = [
-        systemMessage,
-        ...messages
-      ];
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const systemMessage = this.buildSystemMessage(contextDocuments);
 
-      console.log(`Generating streaming chat completion with ${messages.length} messages...`);
-      
-      const stream = await this.openai.chat.completions.create({
-        model: this.chatModel,
-        messages: messagesWithContext,
-        max_completion_tokens: this.maxTokens,
-        // Note: o3-mini doesn't support temperature parameter
-        // temperature: this.temperature,
-        stream: true,
-      });
+        const messagesWithContext: ChatCompletionMessageParam[] = [
+          systemMessage,
+          ...messages,
+        ];
 
-      return stream;
-    } catch (error) {
-      console.error('Error generating streaming chat completion:', error);
-      throw new Error(`Failed to generate streaming chat completion: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.log(
+          `Generating streaming chat completion with ${messages.length} messages... (attempt ${attempt}/${retries})`
+        );
+
+        const stream = await this.openai.chat.completions.create({
+          model: this.chatModel,
+          messages: messagesWithContext,
+          max_completion_tokens: this.maxTokens,
+          // Note: o3-mini doesn't support temperature parameter
+          // temperature: this.temperature,
+          stream: true,
+        });
+
+        return stream;
+      } catch (error) {
+        console.error(
+          `Error generating streaming chat completion (attempt ${attempt}/${retries}):`,
+          error
+        );
+
+        if (attempt === retries) {
+          throw new Error(
+            `Failed to generate streaming chat completion after ${retries} attempts: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
+
+        // Wait before retrying (exponential backoff)
+        const waitTime = Math.pow(2, attempt - 1) * 1000; // 1s, 2s
+        console.log(`Retrying streaming request in ${waitTime}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      }
     }
+    throw new Error("Unexpected error in generateStreamingChatCompletion");
   }
 
   /**
    * Build system message with context
    */
-  private buildSystemMessage(contextDocuments?: string[]): ChatCompletionMessageParam {
+  private buildSystemMessage(
+    contextDocuments?: string[]
+  ): ChatCompletionMessageParam {
     let systemContent = `You are an intelligent educational assistant that helps students and educators with their study materials. You provide accurate, helpful, and well-structured responses based on the provided context.
 
 Key instructions:
@@ -166,11 +257,13 @@ Key instructions:
 6. Cite specific parts of the documents when relevant`;
 
     if (contextDocuments && contextDocuments.length > 0) {
-      systemContent += `\n\nContext Documents:\n${contextDocuments.map((doc, index) => `\n--- Document ${index + 1} ---\n${doc}`).join('')}`;
+      systemContent += `\n\nContext Documents:\n${contextDocuments
+        .map((doc, index) => `\n--- Document ${index + 1} ---\n${doc}`)
+        .join("")}`;
     }
 
     return {
-      role: 'system',
+      role: "system",
       content: systemContent,
     };
   }
@@ -183,15 +276,17 @@ Key instructions:
       // Test with a simple embedding request
       await this.openai.embeddings.create({
         model: this.embeddingModel,
-        input: ['test'],
-        encoding_format: 'float',
+        input: ["test"],
+        encoding_format: "float",
       });
 
       return { isValid: true };
     } catch (error) {
       return {
         isValid: false,
-        error: `OpenAI configuration validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error: `OpenAI configuration validation failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -221,14 +316,16 @@ Key instructions:
    */
   splitTextForTokens(text: string, maxTokens: number = 8000): string[] {
     const estimatedTokens = this.estimateTokens(text);
-    
+
     if (estimatedTokens <= maxTokens) {
       return [text];
     }
 
     const chunks: string[] = [];
-    const approxChunkSize = Math.floor((text.length * maxTokens) / estimatedTokens);
-    
+    const approxChunkSize = Math.floor(
+      (text.length * maxTokens) / estimatedTokens
+    );
+
     for (let i = 0; i < text.length; i += approxChunkSize) {
       chunks.push(text.slice(i, i + approxChunkSize));
     }

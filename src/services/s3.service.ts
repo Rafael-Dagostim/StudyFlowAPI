@@ -1,15 +1,15 @@
-import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
-import { 
-  S3Client, 
-  PutObjectCommand, 
-  GetObjectCommand, 
-  DeleteObjectCommand, 
-  HeadObjectCommand, 
+import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
-  CopyObjectCommand
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import path from "path";
+import { v4 as uuidv4 } from "uuid";
 
 // Validate required environment variables
 if (
@@ -18,16 +18,16 @@ if (
   !process.env.AWS_S3_BUCKET
 ) {
   throw new Error(
-    'AWS credentials and S3 bucket must be configured in environment variables'
+    "AWS credentials and S3 bucket must be configured in environment variables"
   );
 }
 
 // Initialize S3 client with v3 SDK
 const client = new S3Client({
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: process.env.AWS_REGION || "us-east-1",
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
   },
 });
 
@@ -42,13 +42,13 @@ export class S3Service {
     projectId: string
   ): Promise<string> {
     if (!this.bucket) {
-      throw new Error('AWS S3 bucket not configured');
+      throw new Error("AWS S3 bucket not configured");
     }
 
     // Generate unique key
     const fileExtension = path.extname(file.originalname);
     const fileName = path.basename(file.originalname, fileExtension);
-    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9-_]/g, "_");
     const key = `projects/${projectId}/documents/${uuidv4()}_${sanitizedFileName}${fileExtension}`;
 
     const command = new PutObjectCommand({
@@ -69,10 +69,10 @@ export class S3Service {
       console.log(`File uploaded successfully: ${result.ETag}`);
       return key;
     } catch (error) {
-      console.error('S3 upload error:', error);
+      console.error("S3 upload error:", error);
       throw new Error(
         `Failed to upload file to S3: ${
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -86,7 +86,7 @@ export class S3Service {
     expiresIn: number = 3600
   ): Promise<string> {
     if (!this.bucket) {
-      throw new Error('AWS S3 bucket not configured');
+      throw new Error("AWS S3 bucket not configured");
     }
 
     const command = new GetObjectCommand({
@@ -98,10 +98,10 @@ export class S3Service {
       const url = await getSignedUrl(client, command, { expiresIn });
       return url;
     } catch (error) {
-      console.error('S3 presigned URL error:', error);
+      console.error("S3 presigned URL error:", error);
       throw new Error(
         `Failed to generate download URL: ${
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -112,7 +112,7 @@ export class S3Service {
    */
   static async getFileContent(key: string): Promise<Buffer> {
     if (!this.bucket) {
-      throw new Error('AWS S3 bucket not configured');
+      throw new Error("AWS S3 bucket not configured");
     }
 
     const command = new GetObjectCommand({
@@ -122,15 +122,15 @@ export class S3Service {
 
     try {
       const result = await client.send(command);
-      
+
       if (!result.Body) {
-        throw new Error('No file content received from S3');
+        throw new Error("No file content received from S3");
       }
 
       // Convert ReadableStream to Buffer
       const chunks: Uint8Array[] = [];
       const reader = result.Body.transformToWebStream().getReader();
-      
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -139,10 +139,10 @@ export class S3Service {
 
       return Buffer.concat(chunks);
     } catch (error) {
-      console.error('S3 get object error:', error);
+      console.error("S3 get object error:", error);
       throw new Error(
         `Failed to get file from S3: ${
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -153,7 +153,7 @@ export class S3Service {
    */
   static async deleteFile(key: string): Promise<void> {
     if (!this.bucket) {
-      throw new Error('AWS S3 bucket not configured');
+      throw new Error("AWS S3 bucket not configured");
     }
 
     const command = new DeleteObjectCommand({
@@ -165,10 +165,10 @@ export class S3Service {
       await client.send(command);
       console.log(`File deleted successfully: ${key}`);
     } catch (error) {
-      console.error('S3 delete error:', error);
+      console.error("S3 delete error:", error);
       throw new Error(
         `Failed to delete file from S3: ${
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -179,7 +179,7 @@ export class S3Service {
    */
   static async fileExists(key: string): Promise<boolean> {
     if (!this.bucket) {
-      throw new Error('AWS S3 bucket not configured');
+      throw new Error("AWS S3 bucket not configured");
     }
 
     const command = new HeadObjectCommand({
@@ -191,7 +191,10 @@ export class S3Service {
       await client.send(command);
       return true;
     } catch (error: any) {
-      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+      if (
+        error.name === "NotFound" ||
+        error.$metadata?.httpStatusCode === 404
+      ) {
         return false;
       }
       throw error;
@@ -201,14 +204,16 @@ export class S3Service {
   /**
    * List files in a project directory using AWS SDK v3
    */
-  static async listProjectFiles(projectId: string): Promise<Array<{
-    Key?: string;
-    LastModified?: Date;
-    Size?: number;
-    ETag?: string;
-  }>> {
+  static async listProjectFiles(projectId: string): Promise<
+    Array<{
+      Key?: string;
+      LastModified?: Date;
+      Size?: number;
+      ETag?: string;
+    }>
+  > {
     if (!this.bucket) {
-      throw new Error('AWS S3 bucket not configured');
+      throw new Error("AWS S3 bucket not configured");
     }
 
     const command = new ListObjectsV2Command({
@@ -220,10 +225,10 @@ export class S3Service {
       const result = await client.send(command);
       return result.Contents || [];
     } catch (error) {
-      console.error('S3 list objects error:', error);
+      console.error("S3 list objects error:", error);
       throw new Error(
         `Failed to list project files: ${
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -240,7 +245,7 @@ export class S3Service {
     Metadata?: Record<string, string>;
   }> {
     if (!this.bucket) {
-      throw new Error('AWS S3 bucket not configured');
+      throw new Error("AWS S3 bucket not configured");
     }
 
     const command = new HeadObjectCommand({
@@ -258,10 +263,10 @@ export class S3Service {
         Metadata: result.Metadata,
       };
     } catch (error) {
-      console.error('S3 head object error:', error);
+      console.error("S3 head object error:", error);
       throw new Error(
         `Failed to get file metadata: ${
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -284,9 +289,12 @@ export class S3Service {
   /**
    * Copy file within S3 bucket using AWS SDK v3
    */
-  static async copyFile(sourceKey: string, destinationKey: string): Promise<void> {
+  static async copyFile(
+    sourceKey: string,
+    destinationKey: string
+  ): Promise<void> {
     if (!this.bucket) {
-      throw new Error('AWS S3 bucket not configured');
+      throw new Error("AWS S3 bucket not configured");
     }
 
     const command = new CopyObjectCommand({
@@ -297,12 +305,14 @@ export class S3Service {
 
     try {
       await client.send(command);
-      console.log(`File copied successfully: ${sourceKey} -> ${destinationKey}`);
+      console.log(
+        `File copied successfully: ${sourceKey} -> ${destinationKey}`
+      );
     } catch (error) {
-      console.error('S3 copy error:', error);
+      console.error("S3 copy error:", error);
       throw new Error(
         `Failed to copy file in S3: ${
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -318,7 +328,7 @@ export class S3Service {
   }> {
     try {
       const files = await this.listProjectFiles(projectId);
-      
+
       const totalFiles = files.length;
       const totalSize = files.reduce((sum, file) => sum + (file.Size || 0), 0);
       const averageFileSize = totalFiles > 0 ? totalSize / totalFiles : 0;
@@ -329,10 +339,10 @@ export class S3Service {
         averageFileSize,
       };
     } catch (error) {
-      console.error('Error getting project storage stats:', error);
+      console.error("Error getting project storage stats:", error);
       throw new Error(
         `Failed to get storage statistics: ${
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -341,12 +351,15 @@ export class S3Service {
   /**
    * Validate S3 connection and permissions
    */
-  static async validateConnection(): Promise<{ isValid: boolean; error?: string }> {
+  static async validateConnection(): Promise<{
+    isValid: boolean;
+    error?: string;
+  }> {
     try {
       if (!this.bucket) {
         return {
           isValid: false,
-          error: 'S3 bucket not configured'
+          error: "S3 bucket not configured",
         };
       }
 
@@ -357,14 +370,14 @@ export class S3Service {
       });
 
       await client.send(command);
-      
+
       return { isValid: true };
     } catch (error) {
       return {
         isValid: false,
         error: `S3 connection validation failed: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }

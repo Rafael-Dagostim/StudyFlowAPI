@@ -1,4 +1,4 @@
-import { QdrantClient } from '@qdrant/qdrant-js';
+import { QdrantClient } from "@qdrant/qdrant-js";
 
 export interface DocumentChunk {
   id: string;
@@ -28,9 +28,9 @@ export class QdrantService {
   private port: number;
 
   constructor() {
-    this.host = process.env.QDRANT_HOST || 'localhost';
-    this.port = parseInt(process.env.QDRANT_PORT || '6333');
-    
+    this.host = process.env.QDRANT_HOST || "localhost";
+    this.port = parseInt(process.env.QDRANT_PORT || "6333");
+
     this.client = new QdrantClient({
       url: `http://${this.host}:${this.port}`,
       apiKey: process.env.QDRANT_API_KEY || undefined,
@@ -40,16 +40,19 @@ export class QdrantService {
   /**
    * Create a collection for a project
    */
-  async createCollection(projectId: string, vectorSize: number = 1536): Promise<string> {
+  async createCollection(
+    projectId: string,
+    vectorSize: number = 1536
+  ): Promise<string> {
     const collectionName = `project_${projectId}`;
-    
+
     try {
       console.log(`Creating Qdrant collection: ${collectionName}`);
-      
+
       await this.client.createCollection(collectionName, {
         vectors: {
           size: vectorSize,
-          distance: 'Cosine', // Cosine similarity for text embeddings
+          distance: "Cosine", // Cosine similarity for text embeddings
         },
         optimizers_config: {
           default_segment_number: 2,
@@ -61,13 +64,17 @@ export class QdrantService {
       return collectionName;
     } catch (error) {
       // Check if collection already exists
-      if (error instanceof Error && error.message.includes('already exists')) {
+      if (error instanceof Error && error.message.includes("already exists")) {
         console.log(`Collection ${collectionName} already exists`);
         return collectionName;
       }
-      
+
       console.error(`Error creating collection ${collectionName}:`, error);
-      throw new Error(`Failed to create collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to create collection: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -77,9 +84,12 @@ export class QdrantService {
   async collectionExists(collectionName: string): Promise<boolean> {
     try {
       const collections = await this.client.getCollections();
-      return collections.collections.some(col => col.name === collectionName);
+      return collections.collections.some((col) => col.name === collectionName);
     } catch (error) {
-      console.error(`Error checking collection existence: ${collectionName}`, error);
+      console.error(
+        `Error checking collection existence: ${collectionName}`,
+        error
+      );
       return false;
     }
   }
@@ -93,12 +103,14 @@ export class QdrantService {
     embeddings: number[][]
   ): Promise<void> {
     if (chunks.length !== embeddings.length) {
-      throw new Error('Number of chunks must match number of embeddings');
+      throw new Error("Number of chunks must match number of embeddings");
     }
 
     try {
-      console.log(`Storing ${chunks.length} document chunks in collection ${collectionName}`);
-      
+      console.log(
+        `Storing ${chunks.length} document chunks in collection ${collectionName}`
+      );
+
       const points = chunks.map((chunk, index) => ({
         id: chunk.id,
         vector: embeddings[index],
@@ -119,7 +131,11 @@ export class QdrantService {
       console.log(`Successfully stored ${chunks.length} chunks in Qdrant`);
     } catch (error) {
       console.error(`Error storing document chunks:`, error);
-      throw new Error(`Failed to store document chunks: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to store document chunks: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -133,8 +149,10 @@ export class QdrantService {
     scoreThreshold: number = 0.7
   ): Promise<SearchResult[]> {
     try {
-      console.log(`Searching for similar chunks in collection ${collectionName}`);
-      
+      console.log(
+        `Searching for similar chunks in collection ${collectionName}`
+      );
+
       const searchResult = await this.client.search(collectionName, {
         vector: queryEmbedding,
         limit,
@@ -142,7 +160,7 @@ export class QdrantService {
         with_payload: true,
       });
 
-      const results: SearchResult[] = searchResult.map(point => ({
+      const results: SearchResult[] = searchResult.map((point) => ({
         id: point.id as string,
         score: point.score,
         chunk: {
@@ -151,7 +169,7 @@ export class QdrantService {
           projectId: point.payload?.projectId as string,
           content: point.payload?.content as string,
           chunkIndex: point.payload?.chunkIndex as number,
-          metadata: point.payload?.metadata as DocumentChunk['metadata'],
+          metadata: point.payload?.metadata as DocumentChunk["metadata"],
         },
       }));
 
@@ -159,23 +177,32 @@ export class QdrantService {
       return results;
     } catch (error) {
       console.error(`Error searching similar chunks:`, error);
-      throw new Error(`Failed to search similar chunks: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to search similar chunks: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
   /**
    * Delete document chunks from collection
    */
-  async deleteDocumentChunks(collectionName: string, documentId: string): Promise<void> {
+  async deleteDocumentChunks(
+    collectionName: string,
+    documentId: string
+  ): Promise<void> {
     try {
-      console.log(`Deleting chunks for document ${documentId} from collection ${collectionName}`);
-      
+      console.log(
+        `Deleting chunks for document ${documentId} from collection ${collectionName}`
+      );
+
       await this.client.delete(collectionName, {
         wait: true,
         filter: {
           must: [
             {
-              key: 'documentId',
+              key: "documentId",
               match: { value: documentId },
             },
           ],
@@ -185,7 +212,11 @@ export class QdrantService {
       console.log(`Successfully deleted chunks for document ${documentId}`);
     } catch (error) {
       console.error(`Error deleting document chunks:`, error);
-      throw new Error(`Failed to delete document chunks: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to delete document chunks: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -195,13 +226,17 @@ export class QdrantService {
   async deleteCollection(collectionName: string): Promise<void> {
     try {
       console.log(`Deleting collection ${collectionName}`);
-      
+
       await this.client.deleteCollection(collectionName);
-      
+
       console.log(`Successfully deleted collection ${collectionName}`);
     } catch (error) {
       console.error(`Error deleting collection:`, error);
-      throw new Error(`Failed to delete collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to delete collection: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -214,7 +249,11 @@ export class QdrantService {
       return info;
     } catch (error) {
       console.error(`Error getting collection info:`, error);
-      throw new Error(`Failed to get collection info: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to get collection info: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -224,7 +263,7 @@ export class QdrantService {
   async getCollectionStats(collectionName: string) {
     try {
       const info = await this.getCollectionInfo(collectionName);
-      
+
       return {
         name: collectionName,
         vectorsCount: info.vectors_count || 0,
@@ -235,7 +274,11 @@ export class QdrantService {
       };
     } catch (error) {
       console.error(`Error getting collection stats:`, error);
-      throw new Error(`Failed to get collection stats: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to get collection stats: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -251,7 +294,9 @@ export class QdrantService {
     } catch (error) {
       return {
         isHealthy: false,
-        error: `Qdrant health check failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error: `Qdrant health check failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -262,13 +307,17 @@ export class QdrantService {
   async listCollections() {
     try {
       const result = await this.client.getCollections();
-      return result.collections.map(col => ({
+      return result.collections.map((col) => ({
         name: col.name,
-        status: 'active', // Default status since it's not provided in the API response
+        status: "active", // Default status since it's not provided in the API response
       }));
     } catch (error) {
-      console.error('Error listing collections:', error);
-      throw new Error(`Failed to list collections: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Error listing collections:", error);
+      throw new Error(
+        `Failed to list collections: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -280,8 +329,15 @@ export class QdrantService {
       const result = await this.client.count(collectionName);
       return result.count;
     } catch (error) {
-      console.error(`Error counting points in collection ${collectionName}:`, error);
-      throw new Error(`Failed to count points: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error(
+        `Error counting points in collection ${collectionName}:`,
+        error
+      );
+      throw new Error(
+        `Failed to count points: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -296,13 +352,20 @@ export class QdrantService {
         with_vector: false, // Don't include vectors to save bandwidth
       });
 
-      return result.points.map(point => ({
+      return result.points.map((point) => ({
         id: point.id,
         payload: point.payload,
       }));
     } catch (error) {
-      console.error(`Error scrolling points in collection ${collectionName}:`, error);
-      throw new Error(`Failed to scroll points: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error(
+        `Error scrolling points in collection ${collectionName}:`,
+        error
+      );
+      throw new Error(
+        `Failed to scroll points: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 }
