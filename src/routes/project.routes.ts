@@ -1,10 +1,18 @@
-import { Router } from 'express';
-import { ProjectController } from '../controllers/project.controller';
-import { DocumentController } from '../controllers/document.controller';
-import { authenticate } from '../middleware/auth.middleware';
-import { validateBody, validateParams } from '../middleware/validation.middleware';
-import { upload, handleMulterError } from '../middleware/upload.middleware';
-import { createProjectSchema, updateProjectSchema, idParamsSchema, docParamsSchema } from '../utils/validation';
+import { Router } from "express";
+import { DocumentController } from "../controllers/document.controller";
+import { ProjectController } from "../controllers/project.controller";
+import { authenticate } from "../middleware/auth.middleware";
+import { handleMulterError, upload } from "../middleware/upload.middleware";
+import {
+  validateBody,
+  validateParams,
+} from "../middleware/validation.middleware";
+import {
+  createProjectSchema,
+  docParamsSchema,
+  idParamsSchema,
+  updateProjectSchema,
+} from "../utils/validation";
 
 const router = Router();
 
@@ -12,33 +20,55 @@ const router = Router();
 router.use(authenticate);
 
 // Project CRUD routes
-router.post('/', validateBody(createProjectSchema), ProjectController.createProject);
-router.get('/', ProjectController.getProjects);
-router.get('/:id', validateParams(idParamsSchema), ProjectController.getProject);
-router.put('/:id', validateParams(idParamsSchema), validateBody(updateProjectSchema), ProjectController.updateProject);
-router.delete('/:id', validateParams(idParamsSchema), ProjectController.deleteProject);
+router.post(
+  "/",
+  validateBody(createProjectSchema),
+  ProjectController.createProject
+);
+router.get("/", ProjectController.getProjects);
+router.get(
+  "/:id",
+  validateParams(idParamsSchema),
+  ProjectController.getProject
+);
+router.put(
+  "/:id",
+  validateParams(idParamsSchema),
+  validateBody(updateProjectSchema),
+  ProjectController.updateProject
+);
+router.delete(
+  "/:id",
+  validateParams(idParamsSchema),
+  ProjectController.deleteProject
+);
 
 // Document routes
-router.post('/:id/documents', 
-  validateParams(idParamsSchema), 
-  upload.array('files', 10), 
+router.post(
+  "/:id/documents",
+  validateParams(idParamsSchema),
+  upload.array("files", 10),
   handleMulterError,
   DocumentController.uploadDocuments
 );
-router.get('/:id/documents', 
-  validateParams(idParamsSchema), 
+router.get(
+  "/:id/documents",
+  validateParams(idParamsSchema),
   DocumentController.getDocuments
 );
-router.get('/:id/documents/:docId', 
-  validateParams(docParamsSchema), 
+router.get(
+  "/:id/documents/:docId",
+  validateParams(docParamsSchema),
   DocumentController.getDocument
 );
-router.get('/:id/documents/:docId/download', 
-  validateParams(docParamsSchema), 
+router.get(
+  "/:id/documents/:docId/download",
+  validateParams(docParamsSchema),
   DocumentController.downloadDocument
 );
-router.delete('/:id/documents/:docId', 
-  validateParams(docParamsSchema), 
+router.delete(
+  "/:id/documents/:docId",
+  validateParams(docParamsSchema),
   DocumentController.deleteDocument
 );
 

@@ -1,7 +1,11 @@
-import { Response, NextFunction } from 'express';
-import { prisma } from '../utils/database';
-import { createError } from '../middleware/error.middleware';
-import { AuthenticatedRequest, CreateProjectRequest, UpdateProjectRequest } from '../types';
+import { NextFunction, Response } from "express";
+import { createError } from "../middleware/error.middleware";
+import {
+  AuthenticatedRequest,
+  CreateProjectRequest,
+  UpdateProjectRequest,
+} from "../types";
+import { prisma } from "../utils/database";
 
 export class ProjectController {
   /**
@@ -14,7 +18,7 @@ export class ProjectController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { name, subject, description }: CreateProjectRequest = req.body;
@@ -24,29 +28,26 @@ export class ProjectController {
           name,
           subject,
           description,
-          professorId: req.user.id
+          professorId: req.user.id,
         },
         include: {
           professor: {
             select: {
               id: true,
               name: true,
-              email: true
-            }
+              email: true,
+            },
           },
           _count: {
             select: {
               documents: true,
-              conversations: true
-            }
-          }
-        }
+              conversations: true,
+            },
+          },
+        },
       });
 
-      res.status(201).json({
-        message: 'Project created successfully',
-        data: project
-      });
+      res.status(201).json(project);
     } catch (error) {
       next(error);
     }
@@ -62,30 +63,27 @@ export class ProjectController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const projects = await prisma.project.findMany({
         where: {
-          professorId: req.user.id
+          professorId: req.user.id,
         },
         include: {
           _count: {
             select: {
               documents: true,
-              conversations: true
-            }
-          }
+              conversations: true,
+            },
+          },
         },
         orderBy: {
-          updatedAt: 'desc'
-        }
+          updatedAt: "desc",
+        },
       });
 
-      res.status(200).json({
-        message: 'Projects retrieved successfully',
-        data: projects
-      });
+      res.status(200).json(projects);
     } catch (error) {
       next(error);
     }
@@ -101,7 +99,7 @@ export class ProjectController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id } = req.params;
@@ -109,15 +107,15 @@ export class ProjectController {
       const project = await prisma.project.findFirst({
         where: {
           id,
-          professorId: req.user.id
+          professorId: req.user.id,
         },
         include: {
           professor: {
             select: {
               id: true,
               name: true,
-              email: true
-            }
+              email: true,
+            },
           },
           documents: {
             select: {
@@ -126,11 +124,11 @@ export class ProjectController {
               size: true,
               mimeType: true,
               processedAt: true,
-              createdAt: true
+              createdAt: true,
             },
             orderBy: {
-              createdAt: 'desc'
-            }
+              createdAt: "desc",
+            },
           },
           conversations: {
             select: {
@@ -139,25 +137,22 @@ export class ProjectController {
               createdAt: true,
               _count: {
                 select: {
-                  messages: true
-                }
-              }
+                  messages: true,
+                },
+              },
             },
             orderBy: {
-              updatedAt: 'desc'
-            }
-          }
-        }
+              updatedAt: "desc",
+            },
+          },
+        },
       });
 
       if (!project) {
-        throw createError('Project not found', 404);
+        throw createError("Project not found", 404);
       }
 
-      res.status(200).json({
-        message: 'Project retrieved successfully',
-        data: project
-      });
+      res.status(200).json(project);
     } catch (error) {
       next(error);
     }
@@ -173,7 +168,7 @@ export class ProjectController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id } = req.params;
@@ -183,12 +178,12 @@ export class ProjectController {
       const existingProject = await prisma.project.findFirst({
         where: {
           id,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!existingProject) {
-        throw createError('Project not found', 404);
+        throw createError("Project not found", 404);
       }
 
       const updatedProject = await prisma.project.update({
@@ -199,22 +194,19 @@ export class ProjectController {
             select: {
               id: true,
               name: true,
-              email: true
-            }
+              email: true,
+            },
           },
           _count: {
             select: {
               documents: true,
-              conversations: true
-            }
-          }
-        }
+              conversations: true,
+            },
+          },
+        },
       });
 
-      res.status(200).json({
-        message: 'Project updated successfully',
-        data: updatedProject
-      });
+      res.status(200).json(updatedProject);
     } catch (error) {
       next(error);
     }
@@ -230,7 +222,7 @@ export class ProjectController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        throw createError('User not authenticated', 401);
+        throw createError("User not authenticated", 401);
       }
 
       const { id } = req.params;
@@ -239,24 +231,22 @@ export class ProjectController {
       const existingProject = await prisma.project.findFirst({
         where: {
           id,
-          professorId: req.user.id
-        }
+          professorId: req.user.id,
+        },
       });
 
       if (!existingProject) {
-        throw createError('Project not found', 404);
+        throw createError("Project not found", 404);
       }
 
       // TODO: Delete from Qdrant and S3 before deleting from database
       // This will be implemented in Phase 2
 
       await prisma.project.delete({
-        where: { id }
+        where: { id },
       });
 
-      res.status(200).json({
-        message: 'Project deleted successfully'
-      });
+      res.status(204).send();
     } catch (error) {
       next(error);
     }
