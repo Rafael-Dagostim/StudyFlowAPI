@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
-import { createError } from './error.middleware';
+import { NextFunction, Request, Response } from "express";
+import { z } from "zod";
+import { createError } from "./error.middleware";
 
 /**
  * Middleware to validate request parameters using Zod schemas
@@ -13,7 +13,7 @@ export const validateParams = (schema: z.ZodSchema) => {
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
-        next(createError('Invalid request parameters', 400));
+        next(createError("Invalid request parameters", 400));
       } else {
         next(error);
       }
@@ -32,7 +32,7 @@ export const validateBody = (schema: z.ZodSchema) => {
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
-        next(createError('Invalid request body', 400));
+        next(createError("Invalid request body", 400));
       } else {
         next(error);
       }
@@ -51,7 +51,7 @@ export const validateQuery = (schema: z.ZodSchema) => {
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
-        next(createError('Invalid query parameters', 400));
+        next(createError("Invalid query parameters", 400));
       } else {
         next(error);
       }
