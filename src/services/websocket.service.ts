@@ -434,6 +434,26 @@ export class WebSocketService {
   }
 
   // Get WebSocket server instance
+  public notifyFileGeneration(
+    professorId: string, 
+    data: {
+      fileId: string;
+      version: number;
+      status: 'pending' | 'generating' | 'completed' | 'failed';
+      progress: number;
+      message: string;
+    }
+  ) {
+    // Send notification to user's personal room
+    this.io.to(`user:${professorId}`).emit('file-generation-update', {
+      type: 'file-generation',
+      timestamp: new Date().toISOString(),
+      ...data
+    });
+
+    console.log(`File generation notification sent to user ${professorId}:`, data);
+  }
+
   public getIO() {
     return this.io;
   }

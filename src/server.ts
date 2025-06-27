@@ -11,6 +11,7 @@ import chatRoutes from "./routes/chat.routes";
 import documentRoutes from "./routes/document.routes";
 import projectRoutes from "./routes/project.routes";
 import websocketRoutes from "./routes/websocket.routes";
+import generatedFilesRoutes from "./routes/generated-files.routes";
 
 // Import middleware
 import { errorHandler } from "./middleware/error.middleware";
@@ -67,6 +68,25 @@ app.use('/api/chat', (req, res, next) => {
   next();
 });
 
+// Timeout middleware for generated files routes
+app.use('/api/projects/*/generated-files', (req, res, next) => {
+  // Increase timeout for file generation requests
+  req.setTimeout(180000); // 3 minutes
+  res.setTimeout(180000);
+  
+  // Add timing for performance monitoring
+  const startTime = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    console.log(`Generated files request: ${duration}ms for ${req.method} ${req.path}`);
+    if (duration > 30000) {
+      console.warn(`Slow generated files request: ${duration}ms for ${req.path}`);
+    }
+  });
+  
+  next();
+});
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -96,6 +116,7 @@ app.get("/ws-status", (req, res) => {
 
 // API routes
 app.use("/api/auth", authRoutes);
+app.use("/api/projects", generatedFilesRoutes); // Generated files routes under projects (more specific, must come first)
 app.use("/api/projects", projectRoutes);
 app.use("/api/documents", documentRoutes);
 app.use("/api/chat", chatRoutes); // Keep HTTP routes for conversation management
