@@ -19,8 +19,9 @@ model Professor {
   updatedAt DateTime @updatedAt
 
   // Relations
-  projects  Project[]
-  documents Document[]
+  projects       Project[]
+  documents      Document[]
+  generatedFiles GeneratedFile[]
 
   @@map("professors")
 }
@@ -36,9 +37,10 @@ model Project {
   updatedAt           DateTime @updatedAt
 
   // Relations
-  professor     Professor     @relation(fields: [professorId], references: [id], onDelete: Cascade)
-  documents     Document[]
-  conversations Conversation[]
+  professor      Professor       @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  documents      Document[]
+  conversations  Conversation[]
+  generatedFiles GeneratedFile[]
 
   @@map("projects")
 }
@@ -96,4 +98,67 @@ model Message {
 enum Role {
   USER
   ASSISTANT
+}
+
+model GeneratedFile {
+  id              String    @id @default(cuid())
+  projectId       String
+  professorId     String
+  
+  // File identification
+  fileName        String    // e.g., "photosynthesis-study-guide"
+  displayName     String    // e.g., "Photosynthesis Study Guide"
+  fileType        String    // study-guide, quiz, summary, custom
+  format          String    // pdf, markdown, docx
+  
+  // Versioning
+  currentVersion  Int       @default(1)
+  
+  // Metadata
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  professor       Professor @relation(fields: [professorId], references: [id])
+  versions        GeneratedFileVersion[]
+  
+  @@unique([projectId, fileName])
+  @@index([projectId])
+  @@index([professorId])
+  @@map("generated_files")
+}
+
+model GeneratedFileVersion {
+  id              String    @id @default(cuid())
+  fileId          String
+  version         Int
+  
+  // Generation details
+  prompt          String    @db.Text
+  editPrompt      String?   @db.Text  // If this is an edit
+  baseVersion     Int?      // Version this was edited from
+  
+  // File details
+  s3Key           String    // created_files/{fileName}/v{version}/file.{ext}
+  sizeBytes       Int
+  pageCount       Int?      // For PDFs
+  
+  // Generation status
+  status          String    @default("pending") // pending, generating, completed, failed
+  errorMessage    String?   // Error details if failed
+  
+  // RAG context used
+  contextUsed     Json?     // Document chunks used for generation
+  
+  // Metadata
+  createdAt       DateTime  @default(now())
+  generationTime  Int       // Time taken in seconds
+  
+  // Relations
+  generatedFile   GeneratedFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  
+  @@unique([fileId, version])
+  @@index([fileId])
+  @@map("generated_file_versions")
 }
