@@ -89,4 +89,10 @@ temp/
 claude_cache/
 .claude_chat_cache/
 .claude_memory/
-CLAUDE.md
+
+# Generated files temp directory
+temp/generated-files/
+
+# Generated Files Storage
+storage/
+downloads/
