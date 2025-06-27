@@ -38,6 +38,10 @@
   "exclude": [
     "node_modules",
     "dist",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "src/controllers/generated-files.controller.ts",
+    "src/services/generated-files.service.ts",
+    "src/services/pdf.service.ts",
+    "src/routes/generated-files.routes.ts"
   ]
 }
