@@ -13,13 +13,7 @@ export interface CreateFileParams {
   prompt: string;
   displayName: string;
   fileType: 'study-guide' | 'quiz' | 'summary' | 'lesson-plan' | 'custom';
-  format: 'pdf' | 'markdown' | 'docx';
-  options?: {
-    includeImages?: boolean;
-    language?: 'en' | 'pt';
-    difficulty?: 'basic' | 'intermediate' | 'advanced';
-    customPrompt?: string;
-  };
+  format: 'pdf' | 'markdown';
 }
 
 export interface EditFileParams {
@@ -124,7 +118,6 @@ export class GeneratedFilesService {
 
     // Start background generation (don't await)
     this.generateFileContentAsync(file, 1, params.prompt, {
-      ...params.options,
       isEdit: false,
       isActualEdit: false
     }, params.professorId)
@@ -145,7 +138,7 @@ export class GeneratedFilesService {
     });
 
     if (!file) {
-      throw new Error('File not found');
+      throw new Error('Arquivo não encontrado');
     }
 
     const newVersion = file.currentVersion + 1;
@@ -251,12 +244,8 @@ version: ${version}
 ${content}`;
           fileBuffer = Buffer.from(markdownContent, 'utf-8');
           break;
-        case 'docx':
-          // For now, save as markdown until DOCX service is implemented
-          fileBuffer = Buffer.from(content, 'utf-8');
-          break;
         default:
-          throw new Error(`Unsupported format: ${file.format}`);
+          throw new Error(`Formato não suportado: ${file.format}`);
       }
 
       // Save to permanent storage
@@ -345,7 +334,7 @@ ${content}`;
         version,
         status: 'generating',
         progress: 0,
-        message: 'Starting content generation...'
+        message: 'Iniciando geração de conteúdo...'
       });
 
       // Update status to generating
@@ -360,7 +349,7 @@ ${content}`;
         version,
         status: 'completed',
         progress: 100,
-        message: 'File generation completed successfully!'
+        message: 'Arquivo gerado com sucesso!'
       });
 
       // Update status to completed
@@ -381,7 +370,7 @@ ${content}`;
         version,
         status: 'failed',
         progress: 0,
-        message: error instanceof Error ? error.message : 'Unknown error occurred'
+        message: error instanceof Error ? error.message : 'Erro desconhecido ocorreu'
       });
 
       // Update status to failed
@@ -449,7 +438,7 @@ ${content}`;
 
     if (!project) {
       console.error('❌ [CONTEXT] Project not found:', projectId);
-      throw new Error('Project not found');
+      throw new Error('Projeto não encontrado');
     }
     
     console.log('✅ [CONTEXT] Project found:', project.name);
@@ -580,8 +569,6 @@ ${content}`;
       .replace('{context}', contextText)
       .replace('{projectName}', context.projectInfo.name)
       .replace('{subject}', context.projectInfo.subject)
-      .replace('{language}', options.language || 'en')
-      .replace('{difficulty}', options.difficulty || 'intermediate')
       .replace('{baseContent}', options.baseContent || '');
 
     console.log('📝 [AI GENERATION] Full prompt length:', fullPrompt.length);
@@ -600,7 +587,7 @@ ${content}`;
       
       if (!response.content || response.content.length === 0) {
         console.error('❌ [AI GENERATION] Empty response from OpenAI!');
-        throw new Error('Empty response from OpenAI');
+        throw new Error('Resposta vazia do OpenAI');
       }
       
       return response.content;
@@ -613,144 +600,136 @@ ${content}`;
   private getPromptTemplate(fileType: string): string {
     const templates = {
       'study-guide': `
-You are an educational content creator. Create a comprehensive study guide based on the following request and context materials.
+Você é um criador de conteúdo educacional. Crie um guia de estudos abrangente baseado na solicitação e materiais de contexto a seguir.
 
-Request: {prompt}
+Solicitação: {prompt}
 
-Project: {projectName}
-Subject: {subject}
-Language: {language}
-Difficulty Level: {difficulty}
+Projeto: {projectName}
+Matéria: {subject}
 
-Context Materials:
+Materiais de Contexto:
 {context}
 
-Create a well-structured study guide in markdown format with:
-1. A clear title
-2. Learning objectives
-3. Key concepts and definitions
-4. Detailed explanations with examples
-5. Practice questions
-6. Summary of main points
+Crie um guia de estudos bem estruturado em formato markdown com:
+1. Um título claro
+2. Objetivos de aprendizado
+3. Conceitos-chave e definições
+4. Explicações detalhadas com exemplos
+5. Questões práticas
+6. Resumo dos pontos principais
 
-Use proper markdown formatting with headers, bullet points, and emphasis where appropriate.
+Use formatação markdown adequada com cabeçalhos, pontos e ênfase onde apropriado.
 `,
       'quiz': `
-You are an educational assessment creator. Create a comprehensive quiz based on the following request and context materials.
+Você é um criador de avaliações educacionais. Crie um questionário abrangente baseado na solicitação e materiais de contexto a seguir.
 
-Request: {prompt}
+Solicitação: {prompt}
 
-Project: {projectName}
-Subject: {subject}
-Language: {language}
-Difficulty Level: {difficulty}
+Projeto: {projectName}
+Matéria: {subject}
 
-Context Materials:
+Materiais de Contexto:
 {context}
 
-IMPORTANT: Create a complete quiz with EXACTLY this markdown format:
+IMPORTANTE: Crie um questionário completo com EXATAMENTE este formato markdown:
 
-## Instructions
-Write clear, concise instructions for taking this quiz. Include time estimates and any special requirements.
+## Instruções
+Escreva instruções claras e concisas para realizar este questionário. Inclua estimativas de tempo e requisitos especiais.
 
-## Questions
+## Questões
 
-### Question 1
-Write a clear, specific question based on the context materials. Make sure it tests understanding of the subject matter.
+### Questão 1
+Escreva uma pergunta clara e específica baseada nos materiais de contexto. Certifique-se de que testa a compreensão do assunto.
 
-A. First option
-B. Second option  
-C. Third option
-D. Fourth option
+A. Primeira opção
+B. Segunda opção  
+C. Terceira opção
+D. Quarta opção
 
-### Question 2
-Write another question that tests different aspects of the material.
+### Questão 2
+Escreva outra pergunta que teste diferentes aspectos do material.
 
-A. First option
-B. Second option
-C. Third option
-D. Fourth option
+A. Primeira opção
+B. Segunda opção
+C. Terceira opção
+D. Quarta opção
 
-### Question 3
-Continue with more questions - aim for 8-12 total questions.
+### Questão 3
+Continue com mais perguntas - mire em 8-12 questões no total.
 
-A. First option
-B. Second option
-C. Third option
-D. Fourth option
+A. Primeira opção
+B. Segunda opção
+C. Terceira opção
+D. Quarta opção
 
-[Continue with more questions in the same format...]
+[Continue com mais questões no mesmo formato...]
 
-## Answer Key
-Question 1: [Correct answer letter] - [Brief explanation why this is correct]
-Question 2: [Correct answer letter] - [Brief explanation why this is correct]
-Question 3: [Correct answer letter] - [Brief explanation why this is correct]
-[Continue for all questions...]
+## Gabarito
+Questão 1: [Letra da resposta correta] - [Breve explicação do porquê está correto]
+Questão 2: [Letra da resposta correta] - [Breve explicação do porquê está correto]
+Questão 3: [Letra da resposta correta] - [Breve explicação do porquê está correto]
+[Continue para todas as questões...]
 
-Requirements:
-- Use ONLY the markdown format shown above
-- Create 8-12 multiple choice questions
-- Base questions on the provided context materials
-- Include detailed answer explanations
-- Questions should test comprehension, not just memorization
-- Use proper markdown headers (##, ###)
+Requisitos:
+- Use APENAS o formato markdown mostrado acima
+- Crie 8-12 questões de múltipla escolha
+- Base as questões nos materiais de contexto fornecidos
+- Inclua explicações detalhadas das respostas
+- As questões devem testar compreensão, não apenas memorização
+- Use cabeçalhos markdown adequados (##, ###)
 `,
       'summary': `
-You are a content summarizer. Create a clear and concise summary based on the following request and context materials.
+Você é um sumarizador de conteúdo. Crie um resumo claro e conciso baseado na solicitação e materiais de contexto a seguir.
 
-Request: {prompt}
+Solicitação: {prompt}
 
-Project: {projectName}
-Subject: {subject}
-Language: {language}
+Projeto: {projectName}
+Matéria: {subject}
 
-Context Materials:
+Materiais de Contexto:
 {context}
 
-Create a summary in markdown format with:
-1. A clear title
-2. Main topics covered
-3. Key points and concepts
-4. Important conclusions or takeaways
+Crie um resumo em formato markdown com:
+1. Um título claro
+2. Principais tópicos abordados
+3. Pontos-chave e conceitos
+4. Conclusões ou pontos importantes
 
-Keep it concise but comprehensive.
+Mantenha conciso mas abrangente.
 `,
       'lesson-plan': `
-You are an educational planner. Create a detailed lesson plan based on the following request and context materials.
+Você é um planejador educacional. Crie um plano de aula detalhado baseado na solicitação e materiais de contexto a seguir.
 
-Request: {prompt}
+Solicitação: {prompt}
 
-Project: {projectName}
-Subject: {subject}
-Language: {language}
-Difficulty Level: {difficulty}
+Projeto: {projectName}
+Matéria: {subject}
 
-Context Materials:
+Materiais de Contexto:
 {context}
 
-Create a lesson plan in markdown format with:
-1. Lesson title and objectives
-2. Prerequisites/prior knowledge needed
-3. Materials needed
-4. Lesson structure with timing
-5. Activities and assessments
-6. Homework/follow-up activities
+Crie um plano de aula em formato markdown com:
+1. Título da aula e objetivos
+2. Pré-requisitos/conhecimento prévio necessário
+3. Materiais necessários
+4. Estrutura da aula com cronograma
+5. Atividades e avaliações
+6. Tarefas/atividades de acompanhamento
 
-Structure the plan to be practical and actionable for teachers.
+Estruture o plano para ser prático e aplicável para professores.
 `,
       'custom': `
-You are a versatile content creator. Create content based on the following request and context materials.
+Você é um criador de conteúdo versátil. Crie conteúdo baseado na solicitação e materiais de contexto a seguir.
 
-Request: {prompt}
+Solicitação: {prompt}
 
-Project: {projectName}
-Subject: {subject}
-Language: {language}
+Projeto: {projectName}
+Matéria: {subject}
 
-Context Materials:
+Materiais de Contexto:
 {context}
 
-Create well-structured content in markdown format that directly addresses the request. Use appropriate formatting and organization.
+Crie conteúdo bem estruturado em formato markdown que aborde diretamente a solicitação. Use formatação e organização apropriadas.
 `
     };
 
@@ -775,22 +754,20 @@ Provide the complete updated content in the same format.
   private getEditPromptTemplate(fileType: string): string {
     // Template for actual edits when base content exists
     return `
-You are editing existing educational content. Based on the edit request and available context materials, modify the existing content.
+Você está editando conteúdo educacional existente. Baseado na solicitação de edição e materiais de contexto disponíveis, modifique o conteúdo existente.
 
-Edit Request: {prompt}
+Solicitação de Edição: {prompt}
 
-Project: {projectName}
-Subject: {subject}
-Language: {language}
-Difficulty Level: {difficulty}
+Projeto: {projectName}
+Matéria: {subject}
 
-Context Materials (for reference):
+Materiais de Contexto (para referência):
 {context}
 
-Existing Content to Edit:
+Conteúdo Existente para Editar:
 {baseContent}
 
-Provide the complete updated content in the same markdown format, incorporating the requested changes.
+Forneça o conteúdo completo atualizado no mesmo formato markdown, incorporando as mudanças solicitadas.
 `;
   }
 
@@ -822,8 +799,7 @@ Provide the complete updated content in the same markdown format, incorporating 
   private getContentType(format: string): string {
     const types = {
       pdf: 'application/pdf',
-      markdown: 'text/markdown',
-      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      markdown: 'text/markdown'
     };
     return types[format as keyof typeof types] || 'application/octet-stream';
   }
@@ -854,14 +830,14 @@ Provide the complete updated content in the same markdown format, incorporating 
   async downloadFile(fileId: string, version?: number): Promise<{ buffer: Buffer; metadata: any }> {
     const file = await this.getFileById(fileId);
     if (!file) {
-      throw new Error('File not found');
+      throw new Error('Arquivo não encontrado');
     }
 
     const targetVersion = version || file.currentVersion;
     const fileVersion = (file as any).versions?.find((v: any) => v.version === targetVersion);
     
     if (!fileVersion) {
-      throw new Error('Version not found');
+      throw new Error('Versão não encontrada');
     }
 
     // Read file from storage
@@ -884,14 +860,14 @@ Provide the complete updated content in the same markdown format, incorporating 
       };
     } catch (error) {
       console.error('Error reading file:', error);
-      throw new Error('File not found in storage');
+      throw new Error('Arquivo não encontrado no armazenamento');
     }
   }
 
   async deleteFile(fileId: string): Promise<void> {
     const file = await this.getFileById(fileId);
     if (!file) {
-      throw new Error('File not found');
+      throw new Error('Arquivo não encontrado');
     }
 
     // Delete all versions from storage

@@ -14,13 +14,7 @@ const createFileSchema = z.object({
   prompt: z.string().min(10).max(2000),
   displayName: z.string().min(1).max(100),
   fileType: z.enum(['study-guide', 'quiz', 'summary', 'lesson-plan', 'custom']),
-  format: z.enum(['pdf', 'markdown', 'docx']),
-  options: z.object({
-    includeImages: z.boolean().optional(),
-    language: z.enum(['en', 'pt']).optional(),
-    difficulty: z.enum(['basic', 'intermediate', 'advanced']).optional(),
-    customPrompt: z.string().optional()
-  }).optional()
+  format: z.enum(['pdf', 'markdown'])
 });
 
 const editFileSchema = z.object({
@@ -42,7 +36,7 @@ export class GeneratedFilesController {
       const userId = req.user?.id;
 
       if (!userId) {
-        throw createError('Unauthorized', 401);
+        throw createError('Não autorizado', 401);
       }
 
       // Validate request body
@@ -57,7 +51,7 @@ export class GeneratedFilesController {
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError('Projeto não encontrado ou acesso negado', 404);
       }
 
       // Create file generation parameters
@@ -67,8 +61,7 @@ export class GeneratedFilesController {
         prompt: validatedData.prompt,
         displayName: validatedData.displayName,
         fileType: validatedData.fileType,
-        format: validatedData.format,
-        options: validatedData.options
+        format: validatedData.format
       };
 
       // Generate file (this runs in background)
@@ -82,13 +75,13 @@ export class GeneratedFilesController {
           displayName: file.displayName,
           version: file.currentVersion,
           status: 'processing',
-          message: 'File generation started successfully'
+          message: 'Geração de arquivo iniciada com sucesso'
         }
       });
 
     } catch (error) {
       if (error instanceof z.ZodError) {
-        throw createError('Validation error: ' + error.errors.map(e => e.message).join(', '), 400);
+        throw createError('Erro de validação: ' + error.errors.map(e => e.message).join(', '), 400);
       }
       throw error;
     }
@@ -100,7 +93,7 @@ export class GeneratedFilesController {
       const userId = req.user?.id;
 
       if (!userId) {
-        throw createError('Unauthorized', 401);
+        throw createError('Não autorizado', 401);
       }
 
       // Validate request body
@@ -116,7 +109,7 @@ export class GeneratedFilesController {
       });
 
       if (!file) {
-        throw createError('File not found or access denied', 404);
+        throw createError('Arquivo não encontrado ou acesso negado', 404);
       }
 
       // Create new version
@@ -134,13 +127,13 @@ export class GeneratedFilesController {
           fileId,
           version: newVersion.version,
           status: 'processing',
-          message: 'File edit started successfully'
+          message: 'Edição de arquivo iniciada com sucesso'
         }
       });
 
     } catch (error) {
       if (error instanceof z.ZodError) {
-        throw createError('Validation error: ' + error.errors.map(e => e.message).join(', '), 400);
+        throw createError('Erro de validação: ' + error.errors.map(e => e.message).join(', '), 400);
       }
       throw error;
     }
@@ -152,7 +145,7 @@ export class GeneratedFilesController {
       const userId = req.user?.id;
 
       if (!userId) {
-        throw createError('Unauthorized', 401);
+        throw createError('Não autorizado', 401);
       }
 
       // Check if user has access to project
@@ -164,7 +157,7 @@ export class GeneratedFilesController {
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError('Projeto não encontrado ou acesso negado', 404);
       }
 
       // Get all files for the project
@@ -210,14 +203,14 @@ export class GeneratedFilesController {
       const userId = req.user?.id;
 
       if (!userId) {
-        throw createError('Unauthorized', 401);
+        throw createError('Não autorizado', 401);
       }
 
       // Check if user has access to the file
       const file = await this.generatedFilesService.getFileById(fileId);
 
       if (!file || file.projectId !== projectId || file.professorId !== userId) {
-        throw createError('File not found or access denied', 404);
+        throw createError('Arquivo não encontrado ou acesso negado', 404);
       }
 
       // Format response
@@ -261,14 +254,14 @@ export class GeneratedFilesController {
       const userId = req.user?.id;
 
       if (!userId) {
-        throw createError('Unauthorized', 401);
+        throw createError('Não autorizado', 401);
       }
 
       // Check if user has access to the file
       const file = await this.generatedFilesService.getFileById(fileId);
 
       if (!file || file.projectId !== projectId || file.professorId !== userId) {
-        throw createError('File not found or access denied', 404);
+        throw createError('Arquivo não encontrado ou acesso negado', 404);
       }
 
       // Download file
@@ -293,14 +286,14 @@ export class GeneratedFilesController {
       const userId = req.user?.id;
 
       if (!userId) {
-        throw createError('Unauthorized', 401);
+        throw createError('Não autorizado', 401);
       }
 
       // Check if user has access to the file
       const file = await this.generatedFilesService.getFileById(fileId);
 
       if (!file || file.projectId !== projectId || file.professorId !== userId) {
-        throw createError('File not found or access denied', 404);
+        throw createError('Arquivo não encontrado ou acesso negado', 404);
       }
 
       // Delete file
@@ -308,7 +301,7 @@ export class GeneratedFilesController {
 
       res.json({
         success: true,
-        message: 'File deleted successfully'
+        message: 'Arquivo excluído com sucesso'
       });
 
     } catch (error) {
@@ -323,21 +316,21 @@ export class GeneratedFilesController {
       const userId = req.user?.id;
 
       if (!userId) {
-        throw createError('Unauthorized', 401);
+        throw createError('Não autorizado', 401);
       }
 
       // Check if user has access to the file
       const file = await this.generatedFilesService.getFileById(fileId);
 
       if (!file || file.projectId !== projectId || file.professorId !== userId) {
-        throw createError('File not found or access denied', 404);
+        throw createError('Arquivo não encontrado ou acesso negado', 404);
       }
 
       const targetVersion = version || file.currentVersion;
       const fileVersion = (file as any).versions?.find((v: any) => v.version === targetVersion);
 
       if (!fileVersion) {
-        throw createError('Version not found', 404);
+        throw createError('Versão não encontrada', 404);
       }
 
       // Use the actual status from database
@@ -366,33 +359,33 @@ export class GeneratedFilesController {
     const fileTypes = [
       {
         id: 'study-guide',
-        name: 'Study Guide',
-        description: 'Comprehensive learning materials with key concepts, examples, and practice questions',
+        name: 'Guia de Estudos',
+        description: 'Material de aprendizado abrangente com conceitos-chave, exemplos e questões práticas',
         formats: ['pdf', 'markdown']
       },
       {
         id: 'quiz',
-        name: 'Quiz',
-        description: 'Assessment with multiple choice, short answer, and essay questions',
+        name: 'Questionário',
+        description: 'Avaliação com questões de múltipla escolha, resposta curta e dissertativas',
         formats: ['pdf', 'markdown']
       },
       {
         id: 'summary',
-        name: 'Summary',
-        description: 'Concise overview of key topics and concepts',
+        name: 'Resumo',
+        description: 'Visão geral concisa dos principais tópicos e conceitos',
         formats: ['pdf', 'markdown']
       },
       {
         id: 'lesson-plan',
-        name: 'Lesson Plan',
-        description: 'Structured teaching plan with objectives, activities, and assessments',
+        name: 'Plano de Aula',
+        description: 'Plano de ensino estruturado com objetivos, atividades e avaliações',
         formats: ['pdf', 'markdown']
       },
       {
         id: 'custom',
-        name: 'Custom Document',
-        description: 'Custom content based on your specific requirements',
-        formats: ['pdf', 'markdown', 'docx']
+        name: 'Documento Personalizado',
+        description: 'Conteúdo personalizado baseado em seus requisitos específicos',
+        formats: ['pdf', 'markdown']
       }
     ];
 
@@ -409,7 +402,7 @@ export class GeneratedFilesController {
       const version = req.query.version ? parseInt(req.query.version as string) : undefined;
 
       if (!userId) {
-        throw createError('Unauthorized', 401);
+        throw createError('Não autorizado', 401);
       }
 
       // Verify project access
@@ -421,7 +414,7 @@ export class GeneratedFilesController {
       });
 
       if (!project) {
-        throw createError('Project not found or access denied', 404);
+        throw createError('Projeto não encontrado ou acesso negado', 404);
       }
 
       // Get file and verify access
@@ -438,7 +431,7 @@ export class GeneratedFilesController {
       });
 
       if (!file) {
-        throw createError('File not found or access denied', 404);
+        throw createError('Arquivo não encontrado ou acesso negado', 404);
       }
 
       // Determine which version to get
@@ -446,7 +439,7 @@ export class GeneratedFilesController {
       const fileVersion = file.versions.find(v => v.version === targetVersion);
 
       if (!fileVersion) {
-        throw createError('Version not found', 404);
+        throw createError('Versão não encontrada', 404);
       }
 
       // For PDF format, return the stored HTML content
@@ -479,7 +472,7 @@ export class GeneratedFilesController {
           </html>
         `);
       } else {
-        throw createError('HTML content only available for PDF format', 400);
+        throw createError('Conteúdo HTML apenas disponível para formato PDF', 400);
       }
 
     } catch (error) {

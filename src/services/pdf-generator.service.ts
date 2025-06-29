@@ -134,7 +134,7 @@ export class PDFGeneratorService {
             options.metadata?.projectName ? `${options.metadata.projectName} • ` : '',
             this.formatFileType(fileType),
             ' • ',
-            `Generated on ${new Date(options.metadata?.generatedAt || Date.now()).toLocaleDateString()}`
+            `Gerado em ${new Date(options.metadata?.generatedAt || Date.now()).toLocaleDateString('pt-BR')}`
           ],
           style: 'metadata',
           alignment: 'center',
@@ -203,8 +203,9 @@ export class PDFGeneratorService {
           contentArray.push({ text: this.parseInlineMarkdown(currentParagraph), margin: [0, 0, 0, 10] });
           currentParagraph = '';
         }
+        const parsedContent = this.parseInlineMarkdown(line.substring(2));
         contentArray.push({
-          text: '• ' + this.parseInlineMarkdown(line.substring(2)),
+          text: Array.isArray(parsedContent) ? ['• ', ...parsedContent] : '• ' + parsedContent,
           margin: [20, 2, 0, 2]
         });
       } else if (line.match(/^\d+\. /)) {
@@ -212,8 +213,9 @@ export class PDFGeneratorService {
           contentArray.push({ text: this.parseInlineMarkdown(currentParagraph), margin: [0, 0, 0, 10] });
           currentParagraph = '';
         }
+        const parsedLine = this.parseInlineMarkdown(line);
         contentArray.push({
-          text: this.parseInlineMarkdown(line),
+          text: parsedLine,
           margin: [20, 2, 0, 2]
         });
       } else if (line.trim() === '') {
@@ -246,7 +248,7 @@ export class PDFGeneratorService {
     console.log('📝 [PDF-QUIZ] Instructions found:', !!instructionMatch);
     if (instructionMatch) {
       contentArray.push({
-        text: 'Instructions',
+        text: 'Instruções',
         style: 'sectionHeader',
         margin: [0, 0, 0, 10]
       });
@@ -259,7 +261,7 @@ export class PDFGeneratorService {
 
     // Extract questions
     contentArray.push({
-      text: 'Questions',
+      text: 'Questões',
       style: 'sectionHeader',
       margin: [0, 20, 0, 15]
     });
@@ -293,7 +295,7 @@ export class PDFGeneratorService {
       });
 
       contentArray.push({
-        text: `Question ${questionNumber}`,
+        text: `Questão ${questionNumber}`,
         style: 'questionNumber',
         margin: [0, 0, 0, 5]
       });
@@ -327,7 +329,7 @@ export class PDFGeneratorService {
     if (answerKeyMatch) {
       contentArray.push({
         pageBreak: 'before',
-        text: 'Answer Key',
+        text: 'Gabarito',
         style: 'sectionHeader',
         background: '#fff3cd',
         margin: [0, 0, 0, 15]
@@ -417,12 +419,12 @@ export class PDFGeneratorService {
 
   private formatFileType(type: string): string {
     const typeMap: { [key: string]: string } = {
-      'study-guide': 'Study Guide',
-      'quiz': 'Quiz',
-      'summary': 'Summary',
-      'lesson-plan': 'Lesson Plan',
-      'custom': 'Document'
+      'study-guide': 'Guia de Estudos',
+      'quiz': 'Questionário',
+      'summary': 'Resumo',
+      'lesson-plan': 'Plano de Aula',
+      'custom': 'Documento'
     };
-    return typeMap[type] || 'Document';
+    return typeMap[type] || 'Documento';
   }
 }
